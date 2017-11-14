@@ -1247,6 +1247,42 @@ class DoubleShear(NekTestCase):
     def tearDown(self):
         self.move_logs()
 #
+
+####################################################################
+#  io_test; io_test.par
+#  For serial run tests with multiple files are omitted
+####################################################################
+class IO_Test(NekTestCase):
+    example_subdir = 'io_test'
+    case_name = 'io_test'
+
+    def setUp(self):
+        self.size_params = dict(
+            ldim      = '3',
+            lx1       = '6',
+            lxd       = '9',
+            lx2       = 'lx1-2',
+            lelg      = '100',
+            ldimt     = '3',
+        )
+
+        self.build_tools(['genmap'])
+        self.run_genmap()
+
+    @pn_pn_2_parallel
+    def test_PnPn2_Parallel(self):
+        self.size_params['lx2'] = 'lx1-2'
+        self.config_size()
+        self.build_nek(usr_file='io_test')
+        self.run_nek(step_limit=None)  
+        
+        phrase = self.get_phrase_from_log('All I/O tests PASSED')
+        self.assertIsNotNullDelayed(phrase, label='All I/O tests PASSED')
+
+        self.assertDelayedFailures()
+
+    def tearDown(self):
+        self.move_logs()
         
 ###############################################################
 if __name__ == '__main__':
@@ -1264,7 +1300,7 @@ if __name__ == '__main__':
 
     # # Set environment
     os.environ['CC'] = args.cc
-    os.environ['F77'] = args.f77
+    os.environ['FC'] = args.f77
     os.environ['IFMPI'] = args.ifmpi
     os.environ['PARALLEL_PROCS'] = args.nprocs
     if args.verbose:
@@ -1284,7 +1320,8 @@ if __name__ == '__main__':
                MvCylCvode, 
                VarVis, 
                CmtInviscidVortex,
-               DoubleShear   
+               DoubleShear,
+               IO_Test   
                ) 
 
     suite = unittest.TestSuite([unittest.TestLoader().loadTestsFromTestCase(t) for t in testList])
