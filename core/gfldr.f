@@ -27,7 +27,7 @@ c
       real*4 bytetest
 
       etime_t = dnekclock_sync()
-      if(nio.eq.0) write(6,*) 'call gfldr' 
+      if(nio.eq.0) write(6,*) 'call gfldr ',trim(sourcefld) 
 
       ! open source field file
       ierr = 0
@@ -116,22 +116,27 @@ c
      &                          nhash,nhash,nmax,tol)
 
       ! read source fields and interpolate
-      if(ifgetur .and. ifflow) then
+      if(ifgetur) then
+        if(nid.eq.0 .and. loglevel.gt.2) write(6,*) 'reading vel'
         call gfldr_getfld(vx,vy,vz,ldim,ifldpos+1,ifbswp)
         ifldpos = ifldpos + ldim
       endif
       if(ifgetpr) then
+        if(nid.eq.0 .and. loglevel.gt.2) write(6,*) 'reading pr'
         call gfldr_getfld(pm1,dum,dum,1,ifldpos+1,ifbswp)
         ifldpos = ifldpos + 1
         if (ifaxis) call axis_interp_ic(pm1)
         call map_pm1_to_pr(pm1,1)
       endif
       if(ifgettr .and. ifheat) then
+        if(nid.eq.0 .and. loglevel.gt.2) write(6,*) 'reading temp'
         call gfldr_getfld(t(1,1,1,1,1),dum,dum,1,ifldpos+1,ifbswp)
         ifldpos = ifldpos + 1
       endif
       do i = 1,ldimt-1
          if(ifgtpsr(i)) then
+           if(nid.eq.0 .and. loglevel.gt.2) 
+     $       write(6,*) 'reading scalar',i
            call gfldr_getfld(t(1,1,1,1,i+1),dum,dum,1,ifldpos+1,ifbswp) 
            ifldpos = ifldpos + 1
          endif
@@ -278,19 +283,19 @@ c-----------------------------------------------------------------------
       if(iffpts) then ! locate points (iel,iproc,r,s,t)
 
         call fgslib_findpts(inth_gfldr,
-     &                      rcode,1,
-     &                      proc,1,
-     &                      elid,1,
-     &                      rst,ldim,
-     &                      dist,1,
+     &                      grcode,1,
+     &                      gproc,1,
+     &                      gelid,1,
+     &                      grst,ldim,
+     &                      gdist,1,
      &                      xm1,1,
      &                      ym1,1,
      &                      zm1,1,ntot)
 
         do i=1,ntot
-           if(rcode(i).eq.1 .and. sqrt(dist(i)).gt.toldist)
+           if(grcode(i).eq.1 .and. sqrt(gdist(i)).gt.toldist)
      &       nfail = nfail + 1
-           if(rcode(i).eq.2) nfail = nfail + 1
+           if(grcode(i).eq.2) nfail = nfail + 1
         enddo
 
         nfail_sum = i8glsum(nfail,1)
@@ -305,10 +310,10 @@ c-----------------------------------------------------------------------
       ! evaluate inut field at given points
       call fgslib_findpts_eval(inth_gfldr,
      &                         fieldout,1,
-     &                         rcode,1,
-     &                         proc,1,
-     &                         elid,1,
-     &                         rst,ldim,ntot,
+     &                         grcode,1,
+     &                         gproc,1,
+     &                         gelid,1,
+     &                         grst,ldim,ntot,
      &                         fieldin)
 
       return

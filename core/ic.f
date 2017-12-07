@@ -581,8 +581,7 @@ c use new reader (only binary support)
             call sioflag(ndumps,fname,initc(ifile))
             call mfi(fname,ifile)
          enddo
-         if (nid.ne.0) time=0
-         time = glmax(time,1) ! Sync time across processors
+         call bcast(time,wdsize)! Sync time across processors
          return
       endif
 
@@ -1646,13 +1645,11 @@ C
 C
       CALL SETPROP
       CALL SETSOLV
-      IF (IFNATC) GTHETA = GTHETA+10.
 C
       IF (NIO.EQ.0) WRITE (6,*) 'Steady Stokes problem'
       DO 100 IGEOM=1,2
          IF (.NOT.IFSPLIT) CALL FLUID (IGEOM)
  100  CONTINUE
-      IF (IFNATC) GTHETA = GTHETA-10.
 C
 C     Set IFTRAN to true again
 C     Turn convection on again
@@ -2307,7 +2304,7 @@ c     set if_full_pres flag
       if_full_pres = .false.
       if (.not.ifsplit) if_full_pres = if_press_mesh
 
-      ifgtim  = .true.  ! always get time
+c      ifgtim  = .true.  ! always get time
       ifgetxr = .false.
       ifgetur = .false.
       ifgetpr = .false.
@@ -2388,7 +2385,7 @@ c                4  7  10  13   23    33    53    62     68     74
 
 c     Assign read conditions, according to rdcode
 c     NOTE: In the old hdr format: what you see in file is what you get.
-      ifgtim  = .true.  ! always get time
+c      ifgtim  = .true.  ! always get time
       ifgetxr = .false.
       ifgetur = .false.
       ifgetpr = .false.

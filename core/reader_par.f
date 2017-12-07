@@ -76,7 +76,7 @@ C
       param(65) = 1    ! just one i/o node
       param(66) = 6    ! write in binary
       param(67) = 6    ! read in binary
-      param(93) = 20   ! number of vectors for projection
+      param(93) = mxprev ! number of vectors for projection
 
       param(94) = 5    ! projection for helmholz solves 
       param(95) = 5    ! projection for pressure solve
@@ -87,7 +87,7 @@ C
       filterType = 0   ! no filtering
 
       param(160) = 1   ! cvode use normal mode 
-      param(161) = 1   ! cvode use non-stoff integration 
+      param(161) = 2   ! cvode use stiff integration 
       param(162) = 0   ! cvode absolute tolerance
       param(163) = -1  ! cvode realtive tolerance
       param(164) = 100 ! cvode don't limit internal dt
@@ -245,7 +245,7 @@ c set parameters
                goto 999
             endif
          else
-            write(6,*) 'value: ',c_out
+            write(6,*) 'value: ',trim(c_out)
             write(6,*) 'is invalid for general:stopAt!'
             goto 999
          endif
@@ -292,7 +292,7 @@ c set parameters
             param(14) = 0
             param(15) = d_out
          else
-            write(6,*) 'value: ',c_out
+            write(6,*) 'value: ',trim(c_out)
             write(6,*) 'is invalid for general:writeControl!'
             goto 999
          endif
@@ -354,7 +354,7 @@ c set parameters
         else if (index(c_out,'NONE') .eq. 1) then
           idpss(i) = -1
         else
-           write(6,*) 'value: ',c_out
+           write(6,*) 'value: ',trim(c_out)
            write(6,*) 'is invalid for ',trim(txt)//':solver!' 
            goto 999
         endif
@@ -382,8 +382,20 @@ c set parameters
       if(ifnd .eq. 1) param(165) = d_out 
       call finiparser_getDbl(d_out,'cvode:ratioLNLtol',ifnd)
       if(ifnd .eq. 1) param(166) = d_out 
-      call finiparser_getBool(i_out,'cvode:preconditioner',ifnd)
-      if(ifnd .eq. 1 .and. i_out. eq. 1) param(167) = 1
+
+      call finiparser_getString(c_out,'cvode:preconditioner',ifnd)
+      call capit(c_out,132)
+      if(ifnd .eq. 1) then 
+        if (index(c_out,'USER') .eq. 1) then
+           param(167) = 1
+        else if (index(c_out,'NONE') .eq. 1) then
+           param(167) = 0
+        else
+           write(6,*) 'value: ',trim(c_out)
+           write(6,*) 'is invalid for cvode:preconditioner!' 
+           goto 999
+        endif
+      endif
 
       j = 0
       do i = 1,ldimt
@@ -413,7 +425,7 @@ c set parameters
          else if (index(c_out,'SEMG_XXT') .eq. 1) then
             param(40) = 0
          else
-           write(6,*) 'value: ',c_out
+           write(6,*) 'value: ',trim(c_out)
            write(6,*) 'is invalid for pressure:preconditioner!'
            goto 999
          endif
@@ -468,6 +480,7 @@ c        stabilization type: none, explicit or hpfrt
          if (ifnd .eq. 1) then
             dtmp = anint(lx1*(1.0 - d_out)) 
             param(101) = max(dtmp-1,0.0)
+            if (abs(1.0 - d_out).lt.0.01) filterType = 0
          else
             write(6,*) 'general:filterCutoffRatio'
             write(6,*) 'is required for general:filtering!'
@@ -492,12 +505,14 @@ c set logical flags
       if (ifnd .eq. 1) then
         call capit(c_out,132)
 
-        if (index(c_out,'BDF2') .eq. 1) then
+        if (index(c_out,'BDF1') .eq. 1) then
+           param(27) = 1 
+        else if (index(c_out,'BDF2') .eq. 1) then
            param(27) = 2 
         else if (index(c_out,'BDF3') .eq. 1) then
            param(27) = 3 
         else
-           write(6,*) 'value: ',c_out
+           write(6,*) 'value: ',trim(c_out)
            write(6,*) 'is invalid for general:timeStepper!'
            goto 999
         endif
@@ -508,10 +523,19 @@ c set logical flags
         call capit(c_out,132)
         if (index(c_out,'OIFS') .eq. 1) then
            ifchar = .true.
+
+           call finiparser_getDbl(d_out,'general:targetCFL',ifnd)
+           if (ifnd .eq. 1) then
+              param(26) = d_out
+           else
+              write(6,*) 'general:targetCFL'
+              write(6,*) 'is required for general:extrapolation!'
+              goto 999
+           endif
         else if (index(c_out,'STANDARD') .eq. 1) then
            continue
         else
-           write(6,*) 'value: ',c_out
+           write(6,*) 'value: ',trim(c_out)
            write(6,*) 'is invalid for general:extrapolation!'
            goto 999
         endif
@@ -542,7 +566,7 @@ c set logical flags
         else if (index(c_out,'NONE') .eq. 1) then
           continue
         else
-          write(6,*) 'value: ',c_out
+          write(6,*) 'value: ',trim(c_out)
           write(6,*) 'is invalid for mesh:motion!'
           goto 999
         endif
@@ -633,6 +657,7 @@ c set logical flags
 
       call finiparser_getBool(i_out,'cvode:stiff',ifnd)
       if(ifnd .eq. 1) then
+        param(161) = 1 ! AM
         if(i_out .eq. 1) param(161) = 2 !BDF
       endif
 

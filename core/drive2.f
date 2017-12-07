@@ -195,8 +195,6 @@ C
 C
       PARAM(86) = 0 ! No skew-symm. convection for now
 C
-      BETAG  = 0 ! PARAM(3)
-      GTHETA = 0 ! PARAM(4)
       DT     = abs(PARAM(12))
       DTINIT = DT
       FINTIM = PARAM(10)
@@ -242,13 +240,6 @@ C
 C     Print interval defaults to 1
 C
       IF (IOCOMM.EQ.0)  IOCOMM = nsteps+1
-
-C
-C     Set logical for Boussinesq approx (natural convection)
-C
-      IFNATC = .FALSE.
-      IF (BETAG.GT.0.) IFNATC=.TRUE.
-      IF(IFLOMACH) IFNATC = .FALSE.
 C
 C     Set default for mesh integration scheme
 C
@@ -730,6 +721,7 @@ c                - Incompressibe or Weakly compressible (div u .ne. 0).
          call plan4 (igeom)                                           
          if (igeom.ge.2) call chkptol         ! check pressure tolerance 
          if (igeom.ge.2) call vol_flow        ! check for fixed flow rate
+         if (igeom.ge.2) call printdiverr
 
       elseif (iftran) then
 
@@ -1588,7 +1580,6 @@ c     Swap the comments on these two lines if you don't want to fix the
 c     flow rate for periodic-in-X (or Z) flow problems.
 c
       parameter (kx1=lx1,ky1=ly1,kz1=lz1,kx2=lx2,ky2=ly2,kz2=lz2)
-c     parameter (kx1=1,ky1=1,kz1=1,kx2=1,ky2=1,kz2=1)
 c
       common /cvflow_a/ vxc(kx1,ky1,kz1,lelv)
      $                , vyc(kx1,ky1,kz1,lelv)
@@ -1673,7 +1664,7 @@ c     in userf then the true FFX is given by ffx_userf + scale.
       scale_vf(icvflow) = scale
       if (nio.eq.0) write(6,1) istep
      $   ,time,scale,delta_flow,current_flow,flow_rate,chv(icvflow)
-    1    format(i8,e14.7,1p4e13.5,' volflow',1x,a1)
+    1    format(i11,1x,e14.7,1p4e13.5,' volflow',1x,a1)
 
       call add2s2(vx,vxc,scale,ntot1)
       call add2s2(vy,vyc,scale,ntot1)
@@ -1738,9 +1729,9 @@ c
       if (icvflow.eq.2) base_flow = glsc2(vyc,bm1,ntot1)/domain_length
       if (icvflow.eq.3) base_flow = glsc2(vzc,bm1,ntot1)/domain_length
 c
-      if (nio.eq.0) write(6,1) 
+      if (nio.eq.0 .and. loglevel.gt.2) write(6,1) 
      $   istep,base_flow,domain_length,flow_rate,chv(icvflow)
-    1    format(i9,1p3e13.5,' basflow',1x,a1)
+    1    format(i11,1x,1p3e13.5,' basflow',1x,a1)
 c
       return
       end
