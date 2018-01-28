@@ -245,13 +245,11 @@ c     NOTE ::: This subroutine MAY NOT be called by every process
          ux = ubc(ix,iy,iz,ie,1)
          uy = ubc(ix,iy,iz,ie,2)
          uz = ubc(ix,iy,iz,ie,3)
-         pa = ubc(ix,iy,iz,ie,ldim+1)
          if (nfld_neknek.gt.3) temp = ubc(ix,iy,iz,ie,ldim+2)
       else
          ux = valint(ix,iy,iz,ie,1)
          uy = valint(ix,iy,iz,ie,2)
          uz = valint(ix,iy,iz,ie,3)
-         pa = valint(ix,iy,iz,ie,ldim+1)
          if (nfld_neknek.gt.3) temp = valint(ix,iy,iz,ie,ldim+2)
       endif
 
@@ -297,13 +295,13 @@ c-----------------------------------------------------------------------
 c     ngeom - parameter controlling the number of iterations,
 c     set to ngeom=2 by default (no iterations) 
 c     One could change the number of iterations as
-      ngeom = 2
+      ngeom = 5
 
 c     ninter - parameter controlling the order of interface extrapolation 
 c     for neknek,
 c     set to ninter=1 by default
 c     One could change it as
-      ninter = 1
+      ninter = 3
 c     Caution: if ninter greater than 1 is chosen, ngeom greater than 2 
 c     should be used for stability
 
@@ -336,6 +334,8 @@ c-----------------------------------------------------------------------
       call cmult(ym1,twopi,n)
 
 c     This routine initializes the mulitdomain coupling          
+
+      call fix_geom
       
       call multimesh_create
 
