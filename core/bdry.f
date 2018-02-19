@@ -374,9 +374,10 @@ C
             cb=cbc(iface,iel,ifield)
             if ((cb.eq.'o  ' .and. IFSPLIT) .or.
      $          (cb.eq.'on ' .and. IFSPLIT)) then
-               if (nid.eq.0) write(6,*)
-     $              "Error: BC 'o' and 'on' not supported for PN-PN."
-               call exitt
+              call facev(pmask,iel,iface,0.0,lx1,ly1,lz1)
+c               if (nid.eq.0) write(6,*)
+c     $              "Error: BC 'o' and 'on' not supported for PN-PN."
+c               call exitt
             endif
             if (cb.eq.'O  ' .or. cb.eq.'ON ' .or.
      $          cb.eq.'o  ' .or. cb.eq.'on ')
