@@ -444,6 +444,14 @@ c-----------------------------------------------------------------------
                  vx(i,j,k,e) = ux
                  vy(i,j,k,e) = uy
                  vz(i,j,k,e) = uz
+                 if (ifsplit) pr(i,1,1,1)  = pa
+              else
+                 cbu = cbc(f,e,1)
+                 call userbc(i,j,k,f,eg)
+                 vx(i,j,k,e) = ux
+                 vy(i,j,k,e) = uy
+                 vz(i,j,k,e) = uz
+                 if (ifsplit) pr(i,1,1,1)  = pa
               endif
            enddo
            enddo
