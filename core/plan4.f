@@ -80,7 +80,7 @@ C        first, compute pressure
      $                        ,approxp,napproxp,binvm1)
          call add2    (pr,dpr,ntot1)
          call ortho   (pr)
-         call ortho_univ2(pr)
+c         call ortho_univ2(pr)
 
          tpres=tpres+(dnekclock()-etime1)
 
