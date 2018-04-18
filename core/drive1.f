@@ -257,8 +257,8 @@ c-----------------------------------------------------------------------
       if (ifsplit) then   ! PN/PN formulation
 
 
-         if (istep.le.20) ngeom = 50
-         if (istep.gt.20) ngeom = 5
+c         if (istep.le.20) ngeom = 5
+c         if (istep.gt.20) ngeom = 5
          do igeom=1,ngeom
 
          if (igeom.gt.2) call userchk_set_xfer
