@@ -104,7 +104,6 @@ C     Compute startresidual/right-hand-side in the pressure
       INCLUDE 'TOTAL'
 
       REAL           RESPR (LX1*LY1*LZ1,LELV)
-      REAL           RESPRD (LX1*LY1*LZ1,LELV)
 c
       COMMON /SCRNS/ TA1   (LX1*LY1*LZ1,LELV)
      $ ,             TA2   (LX1*LY1*LZ1,LELV)
@@ -276,10 +275,6 @@ c               if (ldim.eq.3) call chsign(w3(1,iel),nxyz1)
 C     Assure that the residual is orthogonal to (1,1,...,1)T 
 C     (only if all Dirichlet b.c.)
       CALL ORTHO (RESPR)
-      call col3(resprd,respr,bm1,ntot1)
-      if (istep.eq.10) then
-       call outpost(vx,vy,vz,pr,t,'prs')
-      endif
 
       return
       END

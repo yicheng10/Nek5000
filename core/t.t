@@ -1050,6 +1050,23 @@ c-----------------------------------------------------------------------
       dqg=glsum(dqg,1) ! sum over all processors for this session
       aqg=glsum(aqg,1) ! sum over all processors for this session
       gamma = 0
+      if (aqg.gt.0) gamma = dqg/aqg
+
+      do e=1,nelv
+      do f=1,2*ldim
+         if (cbc(f,e,1).eq.'v  '.or.cbc(f,e,1).eq.'V  ') then
+            call surface_flux_area(dq,aq
+     $          ,valint(1,1,1,1,1)
+     $          ,valint(1,1,1,1,2)
+     $          ,valint(1,1,1,1,3),e,f,work)
+            dqg = dqg+dq
+            aqg = aqg+aq
+         endif
+      enddo
+      enddo
+      dqg=glsum(dqg,1) ! sum over all processors for this session
+      aqg=glsum(aqg,1) ! sum over all processors for this session
+      gamma = 0
       if (aqg.gt.0) gamma = -dqg/aqg
 
       do e=1,nelv
