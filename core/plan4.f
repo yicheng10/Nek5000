@@ -241,24 +241,6 @@ C     surface terms
                IF (ldim.EQ.3)
      $          CALL FACCL3
      $         (W3(1,IEL),TA3(1,IEL),UNZ(1,1,IFC,IEL),IFC)
-            ELSE IF (CB(1:3).EQ.'o  ') THEN
-c               CALL FACCL3
-c     $         (W1(1,IEL),VX(1,1,1,IEL),UNX(1,1,IFC,IEL),IFC)
-c               CALL FACCL3
-c     $         (W2(1,IEL),VY(1,1,1,IEL),UNY(1,1,IFC,IEL),IFC)
-c               IF (ldim.EQ.3)
-c     $          CALL FACCL3
-c     $         (W3(1,IEL),VZ(1,1,1,IEL),UNZ(1,1,IFC,IEL),IFC)
-c               CALL FACCL3
-c     $         (W1(1,IEL),TA1(1,IEL),UNX(1,1,IFC,IEL),IFC)
-c               CALL FACCL3
-c     $         (W2(1,IEL),TA2(1,IEL),UNY(1,1,IFC,IEL),IFC)
-c               IF (ldim.EQ.3)
-c     $          CALL FACCL3
-c     $         (W3(1,IEL),TA3(1,IEL),UNZ(1,1,IFC,IEL),IFC)
-c               call chsign(w1(1,iel),nxyz1)
-c               call chsign(w2(1,iel),nxyz1)
-c               if (ldim.eq.3) call chsign(w3(1,iel),nxyz1)
             ENDIF
             CALL ADD2   (W1(1,IEL),W2(1,IEL),NXYZ1)
             IF (ldim.EQ.3)
