@@ -731,7 +731,7 @@ c     the information will go to the boundary points
 
       call neknekgsync()
 
-      if (ifvcor) call fix_surface_flux
+      call fix_surface_flux
 
       return
       end
