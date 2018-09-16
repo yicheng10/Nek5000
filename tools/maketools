@@ -8,7 +8,7 @@
 
 # Fortran compiler
 #FC="gfortran"
-#FFLAGS=""
+FFLAGS="-std=legacy"
 
 # C compiler
 #CC="gcc"
