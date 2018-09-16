@@ -112,22 +112,22 @@ C     Intercommunications set up only for 2 sessions
 
       if (nsessions.gt.1) then
 
-c         if (idsess.eq.0) idsess_neighbor=1
-c         if (idsess.eq.1) idsess_neighbor=0
+         if (idsess.eq.0) idsess_neighbor=1
+         if (idsess.eq.1) idsess_neighbor=0
  
-c        call mpi_intercomm_create(intracomm,0,mpi_comm_world, 
-c    &     nid_global_root(idsess_neighbor), 10,intercomm,ierr)
+        call mpi_intercomm_create(intracomm,0,mpi_comm_world, 
+     &     nid_global_root(idsess_neighbor), 10,intercomm,ierr)
 
-c         np_neighbor=npsess(idsess_neighbor)
+         np_neighbor=npsess(idsess_neighbor)
       
          call iniproc(intracomm)
 
          ifhigh=.true.
          iglobalcomm = mpi_comm_world
-c         call mpi_intercomm_merge(intercomm, ifhigh, iglobalcomm, ierr)
+         call mpi_intercomm_merge(intercomm, ifhigh, iglobalcomm, ierr)
 
-c         call iniproc(intracomm)
-c         iglobalcomm = mpi_comm_world
+         call iniproc(intracomm)
+         iglobalcomm = mpi_comm_world
 
          ifneknek   = .true.
          ifneknekm  = .false.
