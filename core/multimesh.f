@@ -453,6 +453,14 @@ c-----------------------------------------------------------------------
       real field(lx1*ly1*lz1*lelt)
       integer nv,nt,i,j,k,n,ie,ix,iy,iz,idx,ifld
 
+      real    delvalint(lx1,ly1,lz1,lelt,ldim)
+      common /delvalmask/ delvalint
+
+      nv = lx1*ly1*lz1*nelv
+      do ifld=1,ldim
+       call copy(delvalint(1,1,1,1,ifld),valint(1,1,1,1,ifld),nv)
+      enddo
+
       etime0 = dnekclock_sync()
       call neknekgsync()
       etime1 = dnekclock()
@@ -490,6 +498,16 @@ c     the information will go to the boundary points
      $              etime, etime+tsync
  99   format(i11,a,1p2e13.4)
       call fix_surface_flux
+
+      do ifld=1,ldim
+       call sub2(delvalint(1,1,1,1,ifld),valint(1,1,1,1,ifld),nv)
+      enddo
+      delvxmax = ms_glamax(delvalint(1,1,1,1,1),nv)
+      delvymax = ms_glamax(delvalint(1,1,1,1,2),nv)
+      if (ldim.eq.3) delvzmax = ms_glamax(delvalint(1,1,1,1,3),nv)
+      if (nid.eq.0) write(6,103) istep,igeom,delvxmax,delvymax,
+     $ ' del-vxy-iter'
+103   format(i11,i5,1p2e13.4,a)
 
       return
       end
@@ -660,7 +678,7 @@ c-----------------------------------------------------------------------
      $          ,valint(1,1,1,1,2)
      $          ,valint(1,1,1,1,3),e,f,work)
             dqg = dqg+dq
-            aqg = aqg+aq
+            if (intflag(f,e).eq.1) aqg = aqg+aq
          endif
       enddo
       enddo
