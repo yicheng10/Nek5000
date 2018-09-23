@@ -6,6 +6,7 @@ c     and set ifoutfld accordingly
 
       include 'SIZE'
       include 'TOTAL'
+      include 'CTIMER'
 
       common /rdump/ ntdump
 
@@ -17,6 +18,11 @@ c      if (istep.ge.nsteps) lastep=1
 
       if (iostep.gt.0) then
          if(mod(istep,iostep).eq.0) ifoutfld=.true.
+      else if (timeioe.ne.0.0) then
+         if (dnekclock_sync()-etimes .ge. (ntdump + 1)*timeio) then
+            ntdump=ntdump+1
+            ifoutfld=.true.
+         endif 
       else if (timeio.ne.0.0) then
          if (time.ge.(ntdump + 1)*timeio) then
             ntdump=ntdump+1
@@ -1111,20 +1117,24 @@ c-----------------------------------------------------------------------
         rfileo = nfileo
       endif
       ndigit = log10(rfileo) + 1
-     
-      k = 1
+
+      lenp = ltrunc(path,132)
+      call chcopy(fnam1(1),path,lenp)    
+      k = 1 + lenp 
+ 
       if (ifdiro) then                                  !  Add directory
-         call chcopy(fnam1(1),'A',1)
-         call chcopy(fnam1(2),six,ndigit)  ! put ???? in string
-         k = 2 + ndigit
+         call chcopy(fnam1(k),'A',1)
+         k = k + 1
+         call chcopy(fnam1(k),six,ndigit)  ! put ???? in string
+         k = k + ndigit
          call chcopy(fnam1(k),slash,1)
-         k = k+1
+         k = k + 1
       endif
 
       if (prefix(1).ne.' '.and.prefix(2).ne.' '.and.    !  Add prefix
      $    prefix(3).ne.' ') then
          call chcopy(fnam1(k),prefix,3)
-         k = k+3
+         k = k + 3
       endif
 
       len=ltrunc(session,132)                           !  Add SESSION

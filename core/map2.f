@@ -33,7 +33,11 @@ c     Distributed memory processor mapping
          call exitt
       ENDIF
       call set_proc_map()
-c
+
+      if (nelt.gt.lelt) then
+         call exitti('nelt > lelt, increase lelt!$',nelt)
+      endif
+
       DO 1200 IFIELD=MFIELD,NFLDT
          IF (IFTMSH(IFIELD)) THEN
             NELG(IFIELD)      = NELGT
