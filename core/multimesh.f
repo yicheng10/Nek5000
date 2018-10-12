@@ -230,15 +230,6 @@ c     nfld_neknek is the number of fields to interpolate.
 c     nfld_neknek = ldim+1 for velocities+pressure 
 c     nfld_neknek = ldim+2 for velocities+pressure+temperature
 
-      real             delvalint(lx1,ly1,lz1,lelt,nfldmax_nn)
-      common /delvalmask/ delvalint
-
-      nv = lx1*ly1*lz1*nelv
-      do ifld=1,ldim
-       call copy(delvalint(1,1,1,1,ifld),valint(1,1,1,1,ifld),nv)
-      enddo
-
-
       which_field(1)='vx'
       which_field(2)='vy'
       which_field(3)='vz'
@@ -265,17 +256,6 @@ c     Special conditions set for flow-poro coupling
      $                 etime, etime+tsync
  99      format(i11,a,1p2e13.4)
       endif
-
-      do ifld=1,ldim
-       call sub2(delvalint(1,1,1,1,ifld),valint(1,1,1,1,ifld),nv)
-      enddo
-      delvxmax = uglamax(delvalint(1,1,1,1,1),nv)
-      delvymax = uglamax(delvalint(1,1,1,1,2),nv)
-      if (ldim.eq.3) delvzmax = uglamax(delvalint(1,1,1,1,3),nv)
-      if (nid.eq.0) write(6,103) istep,igeom,delvxmax,delvymax,
-     $  delvzmax,
-     $ ' del-vxy-iter'
-103   format(i11,i5,1p3e13.4,a)
 
       return
       end
@@ -699,7 +679,7 @@ c     zero out valint
        call rzero(valint(1,1,1,1,i),lx1*ly1*lz1*nelt)
       enddo
 
-      ierror = iglmax(ierror,1)
+      call iglmax(ierror,1)
       if (ierror.eq.1) call exitt
  
       call neknekgsync()
@@ -743,8 +723,6 @@ c     the information will go to the boundary points
           valint(idx,1,1,1,ifld)=fieldout(i,ifld)
         enddo
        enddo
-
-      call fix_surface_flux
 
       return
       end
@@ -836,103 +814,3 @@ c     nfld_neknek - fields to interpolate
       return
       end
 C--------------------------------------------------------------------------
-      subroutine surface_flux_area(dq,aq,qx,qy,qz,e,f,w)
-      include 'SIZE'
-      include 'GEOM'
-      include 'INPUT'
-      include 'PARALLEL'
-      include 'TOPOL'
-      parameter (l=lx1*ly1*lz1)
-      real qx(l,1),qy(l,1),qz(l,1),w(lx1,ly1,lz1)
-      integer e,f
-      call           faccl3  (w,qx(1,e),unx(1,1,f,e),f)
-      call           faddcl3 (w,qy(1,e),uny(1,1,f,e),f)
-      if (if3d) call faddcl3 (w,qz(1,e),unz(1,1,f,e),f)
-      call dsset(lx1,ly1,lz1)
-      iface  = eface1(f)
-      js1    = skpdat(1,iface)
-      jf1    = skpdat(2,iface)
-      jskip1 = skpdat(3,iface)
-      js2    = skpdat(4,iface)
-      jf2    = skpdat(5,iface)
-      jskip2 = skpdat(6,iface)
-      dq = 0
-      aq = 0
-      i  = 0
-      do 100 j2=js2,jf2,jskip2
-      do 100 j1=js1,jf1,jskip1
-         i = i+1
-         dq    = dq + area(i,1,f,e)*w(j1,j2,1)
-         aq    = aq + area(i,1,f,e)
-  100 continue
-      return
-      end
-c-----------------------------------------------------------------------
-      subroutine fix_surface_flux
-      include 'SIZE'
-      include 'TOTAL'
-      include 'NEKNEK'
-      integer e,f
-      common /ctmp1/ work(lx1*ly1*lz1*lelt)
-      integer itchk
-      common /idumochk/ itchk
-      integer icalld
-      save    icalld
-      data    icalld /0/
-      if (icalld.eq.0) then
-       itchk = 0
-       do e=1,nelv
-       do f=1,2*ldim
-         if (cbc(f,e,1).eq.'o  '.or.cbc(f,e,1).eq.'O  ') then
-         if (intflag(f,e).eq.0) then
-           itchk = 1
-         endif
-         endif
-       enddo
-       enddo
-       itchk = iglmax(itchk,1)
-       icalld = 1
-      endif
-      if (itchk.eq.1) return
-      dqg=0
-      aqg=0
-      do e=1,nelv
-      do f=1,2*ldim
-         if (cbc(f,e,1).eq.'v  '.or.cbc(f,e,1).eq.'V  ') then
-            call surface_flux_area(dq,aq
-     $          ,valint(1,1,1,1,1)
-     $          ,valint(1,1,1,1,2)
-     $          ,valint(1,1,1,1,3),e,f,work)
-            dqg = dqg+dq
-            aqg = aqg+aq
-         endif
-      enddo
-      enddo
-      dqg=glsum(dqg,1) ! sum over all processors for this session
-      aqg=glsum(aqg,1) ! sum over all processors for this session
-      gamma = 0
-      if (aqg.gt.0) gamma = -dqg/aqg
-      if (nid.eq.0) write(6,104) idsess,gamma
-104     format(i4,1p1e13.4,' fixing flux NekNek bdry')
-      do e=1,nelv
-      do f=1,2*ldim
-        call facind (i0,i1,j0,j1,k0,k1,lx1,ly1,lz1,f)
-        l=0
-        do k=k0,k1
-        do j=j0,j1
-        do i=i0,i1
-           l=l+1
-           ux = valint(i,j,k,e,1) + gamma*unx(l,1,f,e)
-           uy = valint(i,j,k,e,2) + gamma*uny(l,1,f,e)
-           uz = valint(i,j,k,e,3) + gamma*unz(l,1,f,e)
-           valint(i,j,k,e,1) = ux
-           valint(i,j,k,e,2) = uy
-           if (ldim.eq.3) valint(i,j,k,e,3) = uz
-        enddo
-        enddo
-        enddo
-      enddo
-      enddo
-      return
-      end
-c-----------------------------------------------------------------------
