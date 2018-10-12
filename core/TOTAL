@@ -14,4 +14,3 @@
       include 'ESOLV'
       include 'WZ'
       include 'WZF'
-      include 'OBJDATA'

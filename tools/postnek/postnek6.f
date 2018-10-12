@@ -1025,7 +1025,7 @@ c-----------------------------------------------------------------------
       subroutine mapz(f,regdir)
 #     include "basics.inc"
 c
-      real f(1)
+      real f(nxm*nym*nzm*nelm)
       real gll_pts(nxm),gll_wts(nxm),i(nxm*nxm),it(nxm*nxm)
       real w(nxm*nxm*nxm)
       character*1 regdir

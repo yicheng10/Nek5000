@@ -1,23 +1,23 @@
-### makefile automatically created by makenek 01/28/2018 14:13:10 ###
+### makefile automatically created by makenek 10/12/2018 01:09:21 ###
 BINNAME=nek5000
 LIBNAME=libnek5000.a
 CASENAME:=eddy_uv
-CASEDIR:=/Users/K10/Nek5000/short_tests/eddy_neknek
-S:=/Users/K10/Nek5000/core
-SCMT:=/Users/K10/Nek5000/core/cmt
+CASEDIR:=/Users/ketanmittal/Nek5000/short_tests/eddy_neknek
+S:=/Users/ketanmittal/Nek5000/core
+SCMT:=/Users/ketanmittal/Nek5000/core/cmt
 OPT_INCDIR=./
 OBJDIR=obj
 MPI:=1
 CMT:=0
 NEKNEK:=1
-FC:=mpif77
+FC:=mpif77 -std=legacy
 CC:=mpicc
 FFLAGS:= -fdefault-real-8 -fdefault-double-8 -cpp
 CFLAGS:=
 PPPO=
 PPS=NEKNEK MPI UNDERSCORE TIMER
 USR:=
-USR_LFLAGS:= -L/Users/K10/Nek5000/3rd_party/gslib/lib -lgs
+USR_LFLAGS:= -L/Users/ketanmittal/Nek5000/3rd_party/gslib/lib -lgs
 VISIT:=0
 VISIT_IFLAGS=
 VISIT_LFLAGS=

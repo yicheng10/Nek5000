@@ -80,13 +80,12 @@ C        first, compute pressure
      $                        ,approxp,napproxp,binvm1)
          call add2    (pr,dpr,ntot1)
          call ortho   (pr)
-c         call ortho_univ2(pr)
 
          tpres=tpres+(dnekclock()-etime1)
 
 C        Compute velocity
          call cresvsp (res1,res2,res3,h1,h2)
-         call ophinv  (dv1,dv2,dv3,res1,res2,res3,h1,h2,tolhv,nmxh)
+         call ophinv_pr(dv1,dv2,dv3,res1,res2,res3,h1,h2,tolhv,nmxh)
          call opadd2  (vx,vy,vz,dv1,dv2,dv3)
 
          if (ifexplvis) call redo_split_vis

@@ -89,6 +89,3 @@ c
      $       ,iflmsf,iflmse,iflmsc,ifmsfc
      $       ,ifmseg,ifmscr,ifnskp
      $       ,ifbcor
-
-      integer boundaryIDList(6,lelt)
-      common /cbbid/ boundaryIDList

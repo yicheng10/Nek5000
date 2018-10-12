@@ -23,7 +23,7 @@ c
 
       integer*8 dtmp8
 
-      logical if_byte_swap_test
+      logical ifbswp, if_byte_swap_test
       real*4 bytetest
 
       etime_t = dnekclock_sync()
@@ -89,7 +89,7 @@ c
       ifldpos = 0
       if(ifgetxr) then
         ! read source mesh coordinates
-        call gfldr_getxyz(xm1s,ym1s,zm1s)
+        call gfldr_getxyz(xm1s,ym1s,zm1s,ifbswp)
         ifldpos = ldim
       else
         call exitti('source does not contain a mesh!$',0)
@@ -97,6 +97,10 @@ c
 
       if(if_full_pres) then
         call exitti('no support for if_full_pres!$',0)
+      endif
+
+      if(nelt.ne.nelv) then
+        call exitti('no support for conj/HT!$',0)
       endif
 
       ! initialize interpolation tool using source mesh
@@ -114,44 +118,41 @@ c
       ! read source fields and interpolate
       if(ifgetur) then
         if(nid.eq.0 .and. loglevel.gt.2) write(6,*) 'reading vel'
-        ntot = nx1*ny1*nz1*nelv 
-        call gfldr_getfld(vx,vy,vz,ntot,ldim,ifldpos+1)
+        call gfldr_getfld(vx,vy,vz,ldim,ifldpos+1,ifbswp)
         ifldpos = ifldpos + ldim
       endif
       if(ifgetpr) then
         if(nid.eq.0 .and. loglevel.gt.2) write(6,*) 'reading pr'
-        ntot = nx1*ny1*nz1*nelv 
-        call gfldr_getfld(pm1,dum,dum,ntot,1,ifldpos+1)
+        call gfldr_getfld(pm1,dum,dum,1,ifldpos+1,ifbswp)
         ifldpos = ifldpos + 1
         if (ifaxis) call axis_interp_ic(pm1)
         call map_pm1_to_pr(pm1,1)
       endif
       if(ifgettr .and. ifheat) then
         if(nid.eq.0 .and. loglevel.gt.2) write(6,*) 'reading temp'
-        ntot = nx1*ny1*nz1*nelfld(2) 
-        call gfldr_getfld(t(1,1,1,1,1),dum,dum,ntot,1,ifldpos+1)
+        call gfldr_getfld(t(1,1,1,1,1),dum,dum,1,ifldpos+1,ifbswp)
         ifldpos = ifldpos + 1
       endif
       do i = 1,ldimt-1
          if(ifgtpsr(i)) then
            if(nid.eq.0 .and. loglevel.gt.2) 
      $       write(6,*) 'reading scalar',i
-           ntot = nx1*ny1*nz1*nelfld(i+2) 
-           call gfldr_getfld(t(1,1,1,1,i+1),dum,dum,ntot,1,ifldpos+1) 
+           call gfldr_getfld(t(1,1,1,1,i+1),dum,dum,1,ifldpos+1,ifbswp) 
            ifldpos = ifldpos + 1
          endif
       enddo
 
       call byte_close_mpi(fldh_gfldr,ierr)
-      etime_t = dnekclock_sync() - etime_t
       call fgslib_findpts_free(inth_gfldr)
+
+      etime_t = dnekclock_sync() - etime_t
       if(nio.eq.0) write(6,'(A,1(1g8.2),A)')
      &                   ' done :: gfldr  ', etime_t, ' sec'
 
       return
       end
 c-----------------------------------------------------------------------
-      subroutine gfldr_getxyz(xout,yout,zout)
+      subroutine gfldr_getxyz(xout,yout,zout,ifbswp)
 
       include 'SIZE'
       include 'GFLDR'
@@ -160,6 +161,7 @@ c-----------------------------------------------------------------------
       real xout(*)
       real yout(*)
       real zout(*)
+      logical ifbswp
 
       integer*8 ioff_b
 
@@ -182,7 +184,7 @@ c-----------------------------------------------------------------------
       return
       end
 c-----------------------------------------------------------------------
-      subroutine gfldr_getfld(out1,out2,out3,nout,nldim,ifldpos)
+      subroutine gfldr_getfld(out1,out2,out3,nldim,ifldpos,ifbswp)
 
       include 'SIZE'
       include 'GEOM'
@@ -192,6 +194,7 @@ c-----------------------------------------------------------------------
       real out1(*)
       real out2(*)
       real out3(*)
+      logical ifbswp
 
       integer*8 ioff_b
 
@@ -220,17 +223,18 @@ c-----------------------------------------------------------------------
       endif
 
       ! interpolate onto current mesh
+      ntot = lx1*ly1*lz1*nelt
       call gfldr_buf2vi  (buffld,1,bufr,nldim,wdsizr,nels,nxyzs)
-      call gfldr_intp    (out1,nout,buffld,ifpts)
+      call gfldr_intp    (out1,buffld,ifpts)
       if(nldim.eq.1) return
 
       call gfldr_buf2vi  (buffld,2,bufr,nldim,wdsizr,nels,nxyzs)
-      call gfldr_intp    (out2,nout,buffld,.false.)
+      call gfldr_intp    (out2,buffld,.false.)
       if(nldim.eq.2) return
 
       if(nldim.eq.3) then
         call gfldr_buf2vi(buffld,3,bufr,nldim,wdsizr,nels,nxyzs)
-        call gfldr_intp  (out3,nout,buffld,.false.)
+        call gfldr_intp  (out3,buffld,.false.)
       endif
 
       return
@@ -257,25 +261,27 @@ c-----------------------------------------------------------------------
       return
       end
 c-----------------------------------------------------------------------
-      subroutine gfldr_intp(fieldout,nout,fieldin,iffpts)
+      subroutine gfldr_intp(fieldout,fieldin,iffpts)
 
       include 'SIZE'
       include 'RESTART'
       include 'GEOM'
       include 'GFLDR'
 
-      real    fieldout(nout)
-      real    fieldin (*)
+      real    fieldout(*),fieldin(*)
       logical iffpts
 
       integer*8 i8glsum,nfail,nfail_sum
 
-      if(iffpts) then ! locate points (iel,iproc,r,s,t)
-        nfail = 0
-        toldist = 5e-6
-        if(wdsizr.eq.8) toldist = 5e-14
 
-        ntot  = lx1*ly1*lz1*nelt
+      nfail = 0
+      ntot  = lx1*ly1*lz1*nelt
+
+      toldist = 5e-6
+      if(wdsizr.eq.8) toldist = 5e-14
+
+      if(iffpts) then ! locate points (iel,iproc,r,s,t)
+
         call fgslib_findpts(inth_gfldr,
      &                      grcode,1,
      &                      gproc,1,
@@ -298,16 +304,16 @@ c-----------------------------------------------------------------------
      &      ' WARNING: Unable to find all mesh points in source fld ',
      &      nfail_sum
         endif
+
       endif
 
       ! evaluate inut field at given points
-      npt = nout
       call fgslib_findpts_eval(inth_gfldr,
      &                         fieldout,1,
      &                         grcode,1,
      &                         gproc,1,
      &                         gelid,1,
-     &                         grst,ldim,npt,
+     &                         grst,ldim,ntot,
      &                         fieldin)
 
       return

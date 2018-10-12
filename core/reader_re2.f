@@ -27,8 +27,8 @@ c-----------------------------------------------------------------------
       ! number of fields to read
       if (param(32).gt.0) nfldt = ibc + int(param(32)) - 1
 
-      call blank(cbc,3*size(cbc))
-      call rzero(bc ,size(bc))
+      lcbc=18*lelt*(ldimt1 + 1)
+      call blank(cbc,lcbc)
 
 #ifndef NOMPIIO
       call fgslib_crystal_setup(cr_re2,nekcomm,np)
@@ -100,7 +100,7 @@ c-----------------------------------------------------------------------
       call byte_set_view(lre2off_b,fh_re2)
       call byte_read_mpi(bufr,nwds4r,-1,fh_re2,ierr)
       re2off_b = re2off_b + nrg*4*lrs4
-      if (ierr.gt.0) goto 100
+      if(ierr.gt.0) goto 100
 
       ! pack buffer
       do i = 1,nr
@@ -118,21 +118,18 @@ c-----------------------------------------------------------------------
      &                                   key)
 
       ! unpack buffer
-      ierr = 0
-      if (n.gt.nrmax) then
-         ierr = 1
-         goto 100
-      endif
-
+      if(n.gt.nrmax) goto 100
       do i = 1,n
          iel = gllel(vi(2,i)) 
          call icopy     (bufr,vi(3,i),lrs4)
          call buf_to_xyz(bufr,iel,ifbswap,ierr)
       enddo
 
- 100  call err_chk(ierr,'Error reading .re2 mesh$')
-
       return
+
+ 100  ierr = 1
+      call err_chk(ierr,'Error reading .re2 mesh$')
+
       end
 c-----------------------------------------------------------------------
       subroutine readp_re2_curve(ifbswap)
@@ -180,9 +177,8 @@ c-----------------------------------------------------------------------
       if(nio.eq.0) write(6,*) ' preading curved sides '
 
       ! read data from file
-      dtmp8 = np
-      nr = nrg/dtmp8
-      do i = 0,mod(nrg,dtmp8)-1
+      nr = nrg/np
+      do i = 0,mod(nrg,np)-1
          if(i.eq.nid) nr = nr + 1
       enddo
       irankoff  = igl_running_sum(nr) - nr
@@ -288,9 +284,8 @@ c-----------------------------------------------------------------------
       if(nio.eq.0) write(6,*) ' preading bc for ifld',ifield
 
       ! read data from file
-      dtmp8 = np
-      nr = nrg/dtmp8
-      do i = 0,mod(nrg,dtmp8)-1
+      nr = nrg/np
+      do i = 0,mod(nrg,np)-1
          if(i.eq.nid) nr = nr + 1
       enddo
       irankoff  = igl_running_sum(nr) - nr

@@ -6,7 +6,6 @@ c     and set ifoutfld accordingly
 
       include 'SIZE'
       include 'TOTAL'
-      include 'CTIMER'
 
       common /rdump/ ntdump
 
@@ -18,11 +17,6 @@ c      if (istep.ge.nsteps) lastep=1
 
       if (iostep.gt.0) then
          if(mod(istep,iostep).eq.0) ifoutfld=.true.
-      else if (timeioe.ne.0.0) then
-         if (dnekclock_sync()-etimes .ge. (ntdump + 1)*timeio) then
-            ntdump=ntdump+1
-            ifoutfld=.true.
-         endif 
       else if (timeio.ne.0.0) then
          if (time.ge.(ntdump + 1)*timeio) then
             ntdump=ntdump+1

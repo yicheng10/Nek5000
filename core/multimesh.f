@@ -1,17 +1,141 @@
 c-----------------------------------------------------------------------
+c
 c     Routines for multidomain (neknek) simulations.
 c
 c     References:
 c
-c     "A spectrally accurate method for overlapping grid solution of
-c     incompressible Navier–Stokes equations" Brandon E. Merrill,
+c     "A spectrally accurate method for overlapping grid solution of 
+c     incompressible Navier–Stokes equations" Brandon E. Merrill, 
 c     Yulia T. Peet, Paul F. Fischer, and James W. Lottes, J. Comp. Phys.
 c     307 (2016) 60-93.
 c
-c     "Stability analysis of interface temporal discretization in grid
-c      overlapping methods," Y. Peet, P.F. Fischer, SIAM J. Numer. Anal.
+c     "Stability analysis of interface temporal discretization in grid 
+c      overlapping methods," Y. Peet, P.F. Fischer, SIAM J. Numer. Anal. 
 c      50 (6) (2012) 3375–3401.
+c
+c
 c-----------------------------------------------------------------------
+      subroutine get_session_info(intracomm)
+      include 'mpif.h'
+      include 'SIZE'
+      include 'GLOBALCOM' 
+      include 'TSTEP' 
+      include 'INPUT' 
+      
+      common /happycallflag/ icall
+      common /nekmpi/ nid_,np,nekcomm,nekgroup,nekreal
+      integer nid_global_root(0:nsessmax-1)
+      character*132 session_mult(0:nsessmax-1), path_mult(0:nsessmax-1)
+
+      logical ifhigh
+
+C     nsessmax = upper limit for number of sessions
+C     nfldmax_nn  = max number of fields to be interpolated
+C     nmaxl_nn = max number of points at the boundary
+
+
+C     Read from a file: number of sessions (nsessions), 
+C     session name (SESSION_MULT(n-1)),
+C     number of pocessors in each session (npsess(n-1)) 
+C     and path (PATH_MULT(n-1))
+
+
+      call mpi_initialized(mpi_is_initialized, ierr) !  Initialize MPI
+      if ( mpi_is_initialized .eq. 0 ) call mpi_init (ierr)
+
+      call mpi_comm_size(mpi_comm_world,np_global,ierr)
+      call mpi_comm_rank(mpi_comm_world,nid_global,ierr)
+
+      nid=nid_global
+      nekcomm=mpi_comm_world
+
+      ierr = 0
+      if (nid_global.eq.0) then
+         open (unit=8,file='SESSION.NAME',status='old',err=24)
+         read(8,*) nsessions
+         do n=0,nsessions-1
+            call blank(session_mult(n),132)
+            call blank(path_mult(n)   ,132)
+            read(8,10) session_mult(n)
+            read(8,10) path_mult(n)
+            read(8,*)  npsess(n)
+         enddo
+ 10      format(a132)
+         close(unit=8)
+         goto 23
+ 24      ierr = 1
+      endif
+ 23   continue
+      
+      call err_chk(ierr,' Cannot open SESSION.NAME!$')
+
+      call bcast(nsessions,4)
+
+      if (nsessions.gt.2) 
+     &  call exitti('More than 2 sessions are currently 
+     &  not supported!$',1)
+
+      do n=0,nsessions-1
+         call bcast(npsess(n),4)
+         call bcast(session_mult(n),132)
+         call bcast(path_mult(n),132)
+      enddo
+
+      npall=0
+      do n=0,nsessions-1
+         npall=npall+npsess(n)
+      enddo
+     
+C     Check if number of processors in each session is consistent 
+C     with the total number of processors
+
+      if (npall.ne.np_global) 
+     &  call exitti('Wrong number of processors!$',1)
+
+C     Assign key for splitting into multiple groups
+
+      nid_global_root_next=0
+      do n=0,nsessions-1
+         nid_global_root(n)=nid_global_root_next
+         nid_global_root_next=nid_global_root(n)+npsess(n)
+         if (nid_global.ge.nid_global_root(n).and.
+     &   nid_global.lt.nid_global_root_next) 
+     &    idsess=n
+      enddo
+
+      call mpi_comm_split(mpi_comm_world,idsess,nid,intracomm,ierr)
+ 
+      session = session_mult(idsess)
+      path    = path_mult   (idsess)
+
+C     Intercommunications set up only for 2 sessions 
+
+      if (nsessions.gt.1) then
+
+         ifneknek   = .true.
+         ifneknekm  = .false.
+
+         if (idsess.eq.0) idsess_neighbor=1
+         if (idsess.eq.1) idsess_neighbor=0
+ 
+         call mpi_intercomm_create(intracomm,0,mpi_comm_world, 
+     &     nid_global_root(idsess_neighbor), 10,intercomm,ierr)
+
+         np_neighbor=npsess(idsess_neighbor)
+      
+         call iniproc(intracomm)
+
+         ifhigh=.true.
+         call mpi_intercomm_merge(intercomm, ifhigh, iglobalcomm, ierr)
+
+         ninter = 1 ! Initialize NEKNEK interface extrapolation order to 1.
+         icall = 0  ! Emergency exit call flag
+
+      endif 
+
+      return
+      end
+C-----------------------------------------------------------------------
       subroutine multimesh_create
 
       include 'SIZE'
@@ -22,39 +146,30 @@ c-----------------------------------------------------------------------
       save    icalld
       data    icalld  /0/
 
-      integer nfld_neknek
-      common /inbc/ nfld_neknek
-
       call neknekgsync()
-c     Do some sanity checks - just once at setup
-c     Set interpolation flag: points with bc = 'int' get intflag=1. 
-c     Boundary conditions are changed back to 'v' or 't'.
+c   Do some sanity checks - just once at setup
+C     Set interpolation flag: points with bc = 'int' get intflag=1. 
+C     Boundary conditions are changed back to 'v' or 't'.
 
       if (icalld.eq.0) then
-         nfld_neknek = ldim+nfield
          call nekneksanchk(1)
          call set_intflag
          call neknekmv()
          icalld = icalld + 1
-      endif
-
-      nfld_min = iglmin_ms(nfld_neknek,1)
-      nfld_max = iglmax_ms(nfld_neknek,1)
-      if (nfld_min .ne. nfld_max)
-     $   call exitti('nfld_neknek does not match across sessions!$',1)
- 
+      endif 
       call neknekgsync()
 
-c     Figure out the displacement for the first mesh 
+c   Figure out the displacement for the first mesh 
       call setup_int_neknek(dxf,dyf,dzf)  !sets up interpolation for 2 meshes
 
-c     exchange_points2 finds the processor and element number at
-c     comm_world level and displaces the 1st mesh back
+c    exchange_points2 finds the processor and element number at
+c    comm_world level and displaces the 1st mesh back
       call exchange_points2(dxf,dyf,dzf)
+      
 
       return
       end
-c-------------------------------------------------------------
+C-------------------------------------------------------------
       subroutine set_intflag 
       include 'SIZE'
       include 'TOTAL'
@@ -64,10 +179,10 @@ c-------------------------------------------------------------
       equivalence (cb2,cb)
       integer j,e,f
 
-c     Set interpolation flag: points with boundary condition = 'int' 
+C     Set interpolation flag: points with boundary condition = 'int' 
 c     get intflag=1. 
 c
-c     Boundary conditions are changed back to 'v' or 't'.
+C     Boundary conditions are changed back to 'v' or 't'.
 
       ifield = 1
       if (ifheat) ifield = 2
@@ -78,8 +193,6 @@ c     Boundary conditions are changed back to 'v' or 't'.
       
       nflag=nel*nfaces
       call izero(intflag,nflag)
-
-      npf = 0
 
       do j=1,ifield
       do e=1,nel
@@ -92,11 +205,77 @@ c     Boundary conditions are changed back to 'v' or 't'.
 c           if (cb.eq.'inp') cbc(f,e,ifield)='on ' ! Pressure
 c            if (cb.eq.'inp') cbc(f,e,ifield)='o  ' ! Pressure
             if (cb.eq.'inp') cbc(f,e,j)='o  ' ! Pressure
-            if (cb.eq.'inp') npf =npf+1
          endif
       enddo
       enddo
       enddo
+
+
+      return
+      end
+c------------------------------------------------------------------------
+      subroutine userchk_set_xfer
+      include 'mpif.h'
+      include 'SIZE'
+      include 'TOTAL'
+      include 'CTIMER'
+      include 'NEKNEK'
+
+      common /nekmpi/ nid_,np_,nekcomm,nekgroup,nekreal
+
+      real tsync
+      character*3 which_field(nfldmax_nn)
+
+c     nfld_neknek is the number of fields to interpolate.
+c     nfld_neknek = ldim+1 for velocities+pressure 
+c     nfld_neknek = ldim+2 for velocities+pressure+temperature
+
+      real             delvalint(lx1,ly1,lz1,lelt,nfldmax_nn)
+      common /delvalmask/ delvalint
+
+      nv = lx1*ly1*lz1*nelv
+      do ifld=1,ldim
+       call copy(delvalint(1,1,1,1,ifld),valint(1,1,1,1,ifld),nv)
+      enddo
+
+
+      which_field(1)='vx'
+      which_field(2)='vy'
+      which_field(3)='vz'
+      which_field(ldim+1)='pr'
+      if (nfld_neknek.gt.ldim+1) which_field(ldim+2)='t'
+c
+c     Special conditions set for flow-poro coupling
+      if (nfld_neknek.eq.1) then
+         if(session.eq.'flow') which_field(1)='pr'
+         if(session.eq.'poro') which_field(1)='vy'
+      endif
+
+      if (nsessions.gt.1) then
+         etime0 = dnekclock_sync()
+         call neknekgsync()
+         etime1 = dnekclock()
+         call get_values2(which_field)
+         call nekgsync()
+         etime = dnekclock() - etime1
+         tsync = etime1 - etime0 
+
+         if (nio.eq.0) write(6,99) istep, 
+     $                 '  Multidomain data exchange done', 
+     $                 etime, etime+tsync
+ 99      format(i11,a,1p2e13.4)
+      endif
+
+      do ifld=1,ldim
+       call sub2(delvalint(1,1,1,1,ifld),valint(1,1,1,1,ifld),nv)
+      enddo
+      delvxmax = uglamax(delvalint(1,1,1,1,1),nv)
+      delvymax = uglamax(delvalint(1,1,1,1,2),nv)
+      if (ldim.eq.3) delvzmax = uglamax(delvalint(1,1,1,1,3),nv)
+      if (nid.eq.0) write(6,103) istep,igeom,delvxmax,delvymax,
+     $  delvzmax,
+     $ ' del-vxy-iter'
+103   format(i11,i5,1p3e13.4,a)
 
       return
       end
@@ -106,8 +285,6 @@ c------------------------------------------------------------------------
       include 'TOTAL'
       include 'NEKNEK'
       integer k,i,n
-
-      if (.not.ifneknekc) return
 
       n    = lx1*ly1*lz1*nelt
 
@@ -140,18 +317,112 @@ c     ngeom to ngeom=3-5 for scheme to be stable.
 
       do k=1,nfld_neknek
       do i=1,n
-         valint(i,1,1,1,k) = 
+         ubc(i,1,1,1,k) = 
      $      c0*bdrylg(i,k,0)+c1*bdrylg(i,k,1)+c2*bdrylg(i,k,2)
       enddo
       enddo
 
       return
       end
-c---------------------------------------------------------------------
+C---------------------------------------------------------------------
+      subroutine setintercomm(nekcommtrue,nptrue) 
+      include 'SIZE' 
+      include 'GLOBALCOM'
+      common /nekmpi/ nid_,np,nekcomm,nekgroup,nekreal 
+      
+      nekcommtrue=nekcomm
+      nekcomm=iglobalcomm
+
+      nptrue=np
+      np=np_global
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine unsetintercomm(nekcommtrue,nptrue)
+      include 'SIZE' 
+      include 'GLOBALCOM'
+      common /nekmpi/ nid_,np,nekcomm,nekgroup,nekreal 
+
+      nekcomm=nekcommtrue
+      np=nptrue
+
+      return
+      end
+c-----------------------------------------------------------------------
+      function uglmin(a,n)
+      real a(1)
+
+      call happy_check(1)
+      call setintercomm(nekcommtrue,nptrue)    ! nekcomm=iglobalcomml
+      uglmin=glmin(a,n)
+      call unsetintercomm(nekcommtrue,nptrue)  ! nekcomm=nekcomm_original
+
+      return
+      end
+c-----------------------------------------------------------------------
+      function uglamax(a,n)
+      real a(1)
+
+      call happy_check(1)
+      call setintercomm(nekcommtrue,nptrue)    ! nekcomm=iglobalcomml
+      uglamax=glamax(a,n)
+      call unsetintercomm(nekcommtrue,nptrue)  ! nekcomm=nekcomm_original
+
+      return
+      end
+c------------------------------------------------------------------------
+      function uglmax(a,n)
+      real a(1)
+
+      call happy_check(1)
+      call setintercomm(nekcommtrue,nptrue)    ! nekcomm=iglobalcomml
+      uglmax=glmax(a,n)
+      call unsetintercomm(nekcommtrue,nptrue)  ! nekcomm=nekcomm_original
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine neknekgsync()
+      include 'SIZE' 
+      include 'GLOBALCOM'
+
+      call happy_check(1)
+      call mpi_barrier(intercomm,ierr)
+      return
+      end
+c------------------------------------------------------------------------
+      subroutine happy_check(ihappy)
+      include 'SIZE'
+      include 'TOTAL'
+      common /happycallflag/ icall
+
+c     Happy check
+      call setintercomm(nekcommtrue,nptrue)    ! nekcomm=iglobalcomml
+      iglhappy=iglmin(ihappy,1)
+      call unsetintercomm(nekcommtrue,nptrue)  ! nekcomm=nekcomm_original
+      if (ihappy.eq.1.and.iglhappy.eq.0) then
+         if (nid.eq.0) then
+         write (6,*) '       '
+         write (6,'(A,1i7,A,1e13.5)') 
+     $   ' Emergency exit due to the other session:',
+     $     ISTEP,'   time =',TIME
+         write (6,*)   
+         endif
+         icall=1
+       call exitt
+      endif 
+
+      return
+      end
+c------------------------------------------------------------------------
       subroutine chk_outflow_short ! Assign neighbor velocity to outflow
+
 c
 c     This is just an experimental routine for PnPn only...
 c
+
+
       include 'SIZE'
       include 'TOTAL'
       include 'NEKUSE'
@@ -166,11 +437,11 @@ c     if (ifsplit) ipfld=ldim+1
 
       do i=1,n ! The below has not been checked for ifheat=.true., pff 6/27/15
          if (imask(i,1,1,1).eq.1) then
-            vx(i,1,1,1) = valint(i,1,1,1,1)
-            vy(i,1,1,1) = valint(i,1,1,1,2)
-            if (if3d)    vz(i,1,1,1)  = valint(i,1,1,1,3)
-            if (ifsplit) pr(i,1,1,1)  = valint(i,1,1,1,ipfld)
-            if (ifheat)  t(i,1,1,1,1) = valint(i,1,1,1,itfld)
+            vx(i,1,1,1) = ubc(i,1,1,1,1)
+            vy(i,1,1,1) = ubc(i,1,1,1,2)
+            if (if3d)    vz(i,1,1,1)  = ubc(i,1,1,1,3)
+            if (ifsplit) pr(i,1,1,1)  = ubc(i,1,1,1,ipfld)
+            if (ifheat)  t(i,1,1,1,1) = ubc(i,1,1,1,itfld)
          endif
       enddo
 
@@ -206,14 +477,6 @@ c-----------------------------------------------------------------------
                  vx(i,j,k,e) = ux
                  vy(i,j,k,e) = uy
                  vz(i,j,k,e) = uz
-                 if (ifsplit) pr(i,1,1,1)  = pa
-              else
-c                 cbu = cbc(f,e,1)
-c                 call userbc(i,j,k,f,eg)
-c                 vx(i,j,k,e) = ux
-c                 vy(i,j,k,e) = uy
-c                 vz(i,j,k,e) = uz
-c                 if (ifsplit) pr(i,1,1,1)  = pa
               endif
            enddo
            enddo
@@ -235,7 +498,9 @@ c-----------------------------------------------------------------------
       if (ifmvbd) imove=0
       call neknekgsync()
 
-      iglmove = iglmin_ms(imove,1)
+      call setintercomm(nekcommtrue,nptrue)    ! nekcomm=iglobalcomml
+      iglmove=iglmin(imove,1)
+      call unsetintercomm(nekcommtrue,nptrue)  ! nekcomm=nekcomm_original
 
       if (iglmove.eq.0) then
          ifneknekm=.true.
@@ -257,6 +522,7 @@ c-----------------------------------------------------------------------
 c     THIS ROUTINE DISPLACES THE FIRST MESH AND SETUPS THE FINDPTS
 c     THE MESH IS DISPLACED BACK TO ORIGINAL POSITION IN EXCH_POINTS2
 
+ccccc
 c     Get total number of processors and number of p
       npall = 0
       call neknekgsync()
@@ -264,15 +530,18 @@ c     Get total number of processors and number of p
        npall = npall+npsess(i-1)
       enddo
 
+ccccc
 c     Get diamter of the domain
-      mx_glob = glmax_ms(xm1,lx1*ly1*lz1*nelt)
-      mn_glob = glmin_ms(xm1,lx1*ly1*lz1*nelt)
+      call neknekgsync()
+      mx_glob=uglmax(xm1,lx1*ly1*lz1*nelt)
+      mn_glob=uglmin(xm1,lx1*ly1*lz1*nelt)
       dx1 = mx_glob-mn_glob
+      call neknekgsync()
 
       dxf = 10.+dx1
       dyf = 0.
       dzf = 0.
-
+ccccc
 c     Displace MESH 1
       ntot = lx1*ly1*lz1*nelt
       if (idsess.eq.0) then
@@ -280,7 +549,7 @@ c     Displace MESH 1
       endif
 
       call neknekgsync()
-
+ccccc
 c     Setup findpts    
       tol     = 5e-13
       npt_max = 256
@@ -317,6 +586,7 @@ c-----------------------------------------------------------------------
       save    icalld
       data    icalld /0/
 
+cccc
 c     Look for boundary points with Diriclet b.c. (candidates for
 c     interpolation)
 
@@ -331,6 +601,7 @@ c     interpolation)
       nxy = lx1*ly1
       call izero(imask,ntot)
 
+cccc
 c     Setup arrays of x,y,zs to send to findpts and indices of boundary 
 c     points in jsend
       ip = 0
@@ -375,7 +646,7 @@ c     points in jsend
 
       call neknekgsync()
 
-c     JLs routine to find which points these procs are on
+c     JL's routine to find which points these procs are on
       call fgslib_findpts(inth_multi2,rcode_all,1,
      &                    proc_all,1,
      &                    elid_all,1,
@@ -421,10 +692,6 @@ c     Make sure rcode_all is fine
 
  200  continue
 
-      ipg = iglsum(ip,1)
-      nbpg = iglsum(nbp,1)
-      if (nid.eq.0) write(6,*) 
-     $      idsess,ipg,nbpg,'int pts bcs found findpt'
       npoints_nn = ip
 
 c     zero out valint
@@ -432,7 +699,7 @@ c     zero out valint
        call rzero(valint(1,1,1,1,i),lx1*ly1*lz1*nelt)
       enddo
 
-      ierror = iglmax_ms(ierror,1)
+      ierror = iglmax(ierror,1)
       if (ierror.eq.1) call exitt
  
       call neknekgsync()
@@ -440,45 +707,33 @@ c     zero out valint
       return
       end
 c-----------------------------------------------------------------------
-      subroutine xfer_bcs_neknek
+      subroutine get_values2(which_field)
       include 'SIZE'
       include 'TOTAL'
       include 'NEKNEK'
-      include 'CTIMER'
 
       parameter (lt=lx1*ly1*lz1*lelt,lxyz=lx1*ly1*lz1)
       common /scrcg/ pm1(lt),wk1(lxyz),wk2(lxyz)
 
+      character*3 which_field(nfld_neknek)
       real fieldout(nmaxl_nn,nfldmax_nn)
       real field(lx1*ly1*lz1*lelt)
       integer nv,nt,i,j,k,n,ie,ix,iy,iz,idx,ifld
-
-      real    delvalint(lx1,ly1,lz1,lelt,ldim)
-      common /delvalmask/ delvalint
-
-      nv = lx1*ly1*lz1*nelv
-      do ifld=1,ldim
-       call copy(delvalint(1,1,1,1,ifld),valint(1,1,1,1,ifld),nv)
-      enddo
-
-      etime0 = dnekclock_sync()
-      call neknekgsync()
-      etime1 = dnekclock()
 
       call mappr(pm1,pr,wk1,wk2)  ! Map pressure to pm1 
       nv = lx1*ly1*lz1*nelv
       nt = lx1*ly1*lz1*nelt
 
 c     Interpolate using findpts_eval
-      call field_eval(fieldout(1,1),1,vx)
-      call field_eval(fieldout(1,2),1,vy)
-      if (ldim.eq.3) call field_eval(fieldout(1,ldim),1,vz)
-      call field_eval(fieldout(1,ldim+1),1,pm1)
-      if (nfld_neknek.gt.ldim+1) then 
-        do i=ldim+2,nfld_neknek  !do all passive scalars
-          call field_eval(fieldout(1,i),1,t(1,1,1,1,i-ldim-1))
-        enddo
-      endif
+      do ifld=1,nfld_neknek
+        if (which_field(ifld).eq.'vx') call copy(field,vx ,nt)
+        if (which_field(ifld).eq.'vy') call copy(field,vy ,nt)
+        if (which_field(ifld).eq.'vz') call copy(field,vz ,nt)
+        if (which_field(ifld).eq.'pr') call copy(field,pm1,nt)
+        if (which_field(ifld).eq.'t' ) call copy(field,t  ,nt)
+
+        call field_eval(fieldout(1,ifld),1,field)
+      enddo
          
 c     Now we can transfer this information to valint array from which
 c     the information will go to the boundary points
@@ -489,29 +744,11 @@ c     the information will go to the boundary points
         enddo
        enddo
 
-      call nekgsync()
-      etime = dnekclock() - etime1
-      tsync = etime1 - etime0
-
-      if (nio.eq.0) write(6,99) istep,
-     $              '  Multidomain data exchange done',
-     $              etime, etime+tsync
- 99   format(i11,a,1p2e13.4)
       call fix_surface_flux
-
-      do ifld=1,ldim
-       call sub2(delvalint(1,1,1,1,ifld),valint(1,1,1,1,ifld),nv)
-      enddo
-      delvxmax = ms_glamax(delvalint(1,1,1,1,1),nv)
-      delvymax = ms_glamax(delvalint(1,1,1,1,2),nv)
-      if (ldim.eq.3) delvzmax = ms_glamax(delvalint(1,1,1,1,3),nv)
-      if (nid.eq.0) write(6,103) istep,igeom,delvxmax,delvymax,
-     $ ' del-vxy-iter'
-103   format(i11,i5,1p2e13.4,a)
 
       return
       end
-c--------------------------------------------------------------------------
+C--------------------------------------------------------------------------
       subroutine field_eval(fieldout,fieldstride,fieldin)
       include 'SIZE'
       include 'TOTAL'
@@ -519,7 +756,7 @@ c--------------------------------------------------------------------------
       real fieldout(1)
       real fieldin(1)
       integer fieldstride
-
+cccc
 c     Used for findpts_eval of various fields
       call fgslib_findpts_eval(inth_multi2,fieldout,fieldstride,
      &                         rcode,1,
@@ -530,7 +767,7 @@ c     Used for findpts_eval of various fields
 
       return
       end
-c--------------------------------------------------------------------------
+C--------------------------------------------------------------------------
       subroutine nekneksanchk(flag)
       include 'SIZE'
       include 'TOTAL'
@@ -599,46 +836,18 @@ c     nfld_neknek - fields to interpolate
       return
       end
 C--------------------------------------------------------------------------
-      subroutine neknek_xfer_fld(u,ui)
-      include 'SIZE'
-      include 'TOTAL'
-      include 'NEKNEK'
-      real fieldout(nmaxl_nn,nfldmax_nn)
-      real u(1),ui(1)
-      integer nv,nt
-
-cccc  Exchanges field u between the two neknek sessions and copies it 
-cccc  to ui
-c     Interpolate using findpts_eval
-      call field_eval(fieldout(1,1),1,u)
-cccc
-c     Now we can transfer this information to valint array from which
-c     the information will go to the boundary points
-       do i=1,npoints_nn
-        idx = iList(1,i)
-        ui(idx)=fieldout(i,1)
-       enddo
-      call neknekgsync()
-
-      return
-      end
-C--------------------------------------------------------------------------
       subroutine surface_flux_area(dq,aq,qx,qy,qz,e,f,w)
-
       include 'SIZE'
       include 'GEOM'
       include 'INPUT'
       include 'PARALLEL'
       include 'TOPOL'
       parameter (l=lx1*ly1*lz1)
-
       real qx(l,1),qy(l,1),qz(l,1),w(lx1,ly1,lz1)
       integer e,f
-
       call           faccl3  (w,qx(1,e),unx(1,1,f,e),f)
       call           faddcl3 (w,qy(1,e),uny(1,1,f,e),f)
       if (if3d) call faddcl3 (w,qz(1,e),unz(1,1,f,e),f)
-
       call dsset(lx1,ly1,lz1)
       iface  = eface1(f)
       js1    = skpdat(1,iface)
@@ -647,7 +856,6 @@ C--------------------------------------------------------------------------
       js2    = skpdat(4,iface)
       jf2    = skpdat(5,iface)
       jskip2 = skpdat(6,iface)
-
       dq = 0
       aq = 0
       i  = 0
@@ -657,7 +865,6 @@ C--------------------------------------------------------------------------
          dq    = dq + area(i,1,f,e)*w(j1,j2,1)
          aq    = aq + area(i,1,f,e)
   100 continue
-
       return
       end
 c-----------------------------------------------------------------------
@@ -667,7 +874,26 @@ c-----------------------------------------------------------------------
       include 'NEKNEK'
       integer e,f
       common /ctmp1/ work(lx1*ly1*lz1*lelt)
-
+      integer itchk
+      common /idumochk/ itchk
+      integer icalld
+      save    icalld
+      data    icalld /0/
+      if (icalld.eq.0) then
+       itchk = 0
+       do e=1,nelv
+       do f=1,2*ldim
+         if (cbc(f,e,1).eq.'o  '.or.cbc(f,e,1).eq.'O  ') then
+         if (intflag(f,e).eq.0) then
+           itchk = 1
+         endif
+         endif
+       enddo
+       enddo
+       itchk = iglmax(itchk,1)
+       icalld = 1
+      endif
+      if (itchk.eq.1) return
       dqg=0
       aqg=0
       do e=1,nelv
@@ -678,7 +904,7 @@ c-----------------------------------------------------------------------
      $          ,valint(1,1,1,1,2)
      $          ,valint(1,1,1,1,3),e,f,work)
             dqg = dqg+dq
-            if (intflag(f,e).eq.1) aqg = aqg+aq
+            aqg = aqg+aq
          endif
       enddo
       enddo
@@ -686,7 +912,8 @@ c-----------------------------------------------------------------------
       aqg=glsum(aqg,1) ! sum over all processors for this session
       gamma = 0
       if (aqg.gt.0) gamma = -dqg/aqg
-
+      if (nid.eq.0) write(6,104) idsess,gamma
+104     format(i4,1p1e13.4,' fixing flux NekNek bdry')
       do e=1,nelv
       do f=1,2*ldim
         call facind (i0,i1,j0,j1,k0,k1,lx1,ly1,lz1,f)
@@ -698,17 +925,14 @@ c-----------------------------------------------------------------------
            ux = valint(i,j,k,e,1) + gamma*unx(l,1,f,e)
            uy = valint(i,j,k,e,2) + gamma*uny(l,1,f,e)
            uz = valint(i,j,k,e,3) + gamma*unz(l,1,f,e)
-
            valint(i,j,k,e,1) = ux
            valint(i,j,k,e,2) = uy
            if (ldim.eq.3) valint(i,j,k,e,3) = uz
-
         enddo
         enddo
         enddo
       enddo
       enddo
-           
       return
       end
 c-----------------------------------------------------------------------

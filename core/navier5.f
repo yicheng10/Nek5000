@@ -52,7 +52,7 @@ c     outpost arrays
       if(wght.le.0) return
       if(ifaxis) call exitti('Filtering not supported w/ IFAXIS!$',1)
       if(nid.eq.0 .and. loglevel.gt.2) write(6,*) 'apply q_filter ',
-     $                                            ncut, wght
+     $                                            ifield, ncut, wght
 
       imax = nid
       imax = iglmax(imax,1)
@@ -88,77 +88,89 @@ c        decay in wave space
       endif
 
       ifldt  = ifield
-      ifield = 1
+c     ifield = 1
 
       if_fltv = .false.
       if ( ifflow .and. .not. ifmhd ) if_fltv = .true.
-      if ( ifmhd                    ) if_fltv = .true.
-      if ( .not.ifbase              ) if_fltv = .false. ! base-flow frozen
-      if ( .not. iffilter(1)        ) if_fltv = .false. 
+      if ( ifield.eq.1  .and. ifmhd ) if_fltv = .true.
+
+c     Adam Peplinski; to take into account freezing of base flow
+      if ( .not.ifbase             ) if_fltv = .false. ! base-flow frozen
 
       if ( if_fltv ) then
          call filterq(vx,intv,lx1,lz1,wk1,wk2,intt,if3d,umax)
          call filterq(vy,intv,lx1,lz1,wk1,wk2,intt,if3d,vmax)
          if (if3d)
-     $   call filterq(vz,intv,lx1,lz1,wk1,wk2,intt,if3d,wmax)
-
+     $      call filterq(vz,intv,lx1,lz1,wk1,wk2,intt,if3d,wmax)
          if (ifsplit.and..not.iflomach) 
      $      call filterq(pr,intv,lx1,lz1,wk1,wk2,intt,if3d,pmax)
-
-         if (ifpert) then
-           do j=1,npert
-              call filterq(vxp(1,j),intv,lx1,lz1,wk1,wk2,intt,if3d,umax)
-              call filterq(vyp(1,j),intv,lx1,lz1,wk1,wk2,intt,if3d,vmax)
-              if (if3d)
-     $        call filterq(vzp(1,j),intv,lx1,lz1,wk1,wk2,intt,if3d,wmax)
-           enddo
-         endif
       endif
-
+c
       if (ifmhd.and.ifield.eq.ifldmhd) then
          call filterq(bx,intv,lx1,lz1,wk1,wk2,intt,if3d,umax)
          call filterq(by,intv,lx1,lz1,wk1,wk2,intt,if3d,vmax)
          if (if3d)
      $   call filterq(bz,intv,lx1,lz1,wk1,wk2,intt,if3d,wmax)
       endif
+c
+      if (ifpert) then
+        do j=1,npert
 
+         ifield = 1
+         call filterq(vxp(1,j),intv,lx1,lz1,wk1,wk2,intt,if3d,umax)
+         call filterq(vyp(1,j),intv,lx1,lz1,wk1,wk2,intt,if3d,vmax)
+         if (if3d)
+     $   call filterq(vzp(1,j),intv,lx1,lz1,wk1,wk2,intt,if3d,wmax)
+
+         ifield = 2
+         if (ifheat .and. .not.ifcvfld(ifield)) 
+     $   call filterq(tp(1,j,1),intv,lx1,lz1,wk1,wk2,intt,if3d,wmax)
+
+        enddo
+      endif
+c
       mmax = 0
       if (ifflow) then
 c        pmax    = glmax(pmax,1)
-c         omax(1) = glmax(umax,1)
-c         omax(2) = glmax(vmax,1)
-c         omax(3) = glmax(wmax,1)
+         omax(1) = glmax(umax,1)
+         omax(2) = glmax(vmax,1)
+         omax(3) = glmax(wmax,1)
          mmax = ldim
       endif
          
+c
       nfldt = 1+npscal
-      do ifld=1,nfldt
-         ifield = ifld + 1
-         if (.not. iffilter(ifield)) goto 10
-         call filterq(t(1,1,1,1,ifld),intv,
-     $                lx1,lz1,wk1,wk2,intt,if3d,tmax(ifld))
-         if (ifpert) then
-            do j=1,npert
-               call filterq(tp(1,j,1),intv,lx1,lz1,wk1,wk2,intt,if3d,
-     $                      wmax)
-            enddo
-         endif
-  10     mmax = mmax+1
-c         omax(mmax) = glmax(tmax(ifld),1)
-      enddo
+      if (ifheat .and. .not.ifcvode) then
+         do ifld=1,nfldt
+            ifield = ifld + 1
+            call filterq(t(1,1,1,1,ifld),intv
+     $                  ,lx1,lz1,wk1,wk2,intt,if3d,tmax(ifld))
+            mmax = mmax+1
+            omax(mmax) = glmax(tmax(ifld),1)
+         enddo
+      endif
 
-c      if (nio.eq.0) then
-c            if (if3d) then
-c               write(6,1) istep,ifield,umax,vmax,wmax
-c            else
-c               write(6,1) istep,ifield,umax,vmax
-c            endif
-c    1       format(4x,i7,i3,' qfilt:',1p3e12.4)
-c            if(ifheat) 
-c     &            write(6,'(1p50e12.4)') (tmax(k),k=1,nfldt)
-c      endif
+      if (nio.eq.0) then
+         if (npscal.eq.0) then
+c           write(6,101) mmax
+c           write(sfmt,101) mmax
+c 101       format('''(i8,1p',i1,'e12.4,a6)''')
+c           write(6,sfmt) istep,(omax(k),k=1,mmax),' qfilt'
+c         write(6,'(i8,1p4e12.4,a6)') istep,(omax(k),k=1,mmax),' qfilt'
+         else
+            if (if3d) then
+               write(6,1) istep,ifield,umax,vmax,wmax
+            else
+               write(6,1) istep,ifield,umax,vmax
+            endif
+    1       format(4x,i7,i3,' qfilt:',1p3e12.4)
+            if(ifheat .and. .not.ifcvode) 
+     &            write(6,'(1p50e12.4)') (tmax(k),k=1,nfldt)
+         endif
+      endif
 
       ifield = ifldt   ! RESTORE ifield
+
 
       return
       end
@@ -180,8 +192,9 @@ c
       nxyz=nx*nx*nz
       dmax = 0.
 
-      if (nio.eq.0 .and. loglevel.gt.2) write(6,*) 'call filterq',ifield
+
       nel = nelfld(ifield)
+
 
       if (if3d) then
          do e=1,nel
@@ -229,6 +242,269 @@ c
       enddo
     1 format(1p1e22.13)
       close(unit=io)
+c
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine drag_calc(scale)
+c
+      INCLUDE 'SIZE'  
+      INCLUDE 'TOTAL' 
+c
+      common /scrns/         pm1(lx1,ly1,lz1,lelv)
+     $,vxx(lx1,ly1,lz1,lelv),vxy(lx1,ly1,lz1,lelv),vxz(lx1,ly1,lz1,lelv)
+     $,vyx(lx1,ly1,lz1,lelv),vyy(lx1,ly1,lz1,lelv),vyz(lx1,ly1,lz1,lelv)
+      common /scruz/ 
+     $ vzx(lx1,ly1,lz1,lelv),vzy(lx1,ly1,lz1,lelv),vzz(lx1,ly1,lz1,lelv)
+     $,one(lx1,ly1,lz1,lelv)
+       real work(1)
+       equivalence (work,one)
+c
+      common /cdrag/ dragx(0:maxobj),dragy(0:maxobj),dragz(0:maxobj)
+     $             ,  momx(0:maxobj), momy(0:maxobj), momz(0:maxobj)
+     $             ,  dpdx_mean,dpdy_mean,dpdz_mean
+      real momx ,momy ,momz
+c
+      common /tdrag/ drag(11)
+      real dragpx,dragpy,dragpz,dragvx,dragvy,dragvz
+      real momvx ,momvy ,momvz
+      real check1,check2
+c
+      equivalence (dragpx,drag(1)),(dragpy,drag(2)),(dragpz,drag(3))
+      equivalence (dragvx,drag(4)),(dragvy,drag(5)),(dragvz,drag(6))
+      equivalence (momvx ,drag(7)),(momvy ,drag(8)),(momvz ,drag(9)) 
+      equivalence (check1,drag(10)),(check2,drag(11))
+
+      common /cvflow_r/ flow_rate,base_flow,domain_length,xsec
+     $                , scale_vf(3)
+
+      ntot1  = lx1*ly1*lz1*nelv
+
+c    Map pressure onto mesh 1   (vxx and vyy are used as work arrays)
+      call mappr(pm1,pr,vxx,vyy)
+      call rone (one,ntot1)
+c
+c    Add mean_pressure_gradient.X to p:
+
+      if (param(55).ne.0) then
+         dpdx_mean = -scale_vf(1)
+         dpdy_mean = -scale_vf(2)
+         dpdz_mean = -scale_vf(3)
+      endif
+
+      call add2s2(pm1,xm1,dpdx_mean,ntot1)  ! Doesn't work if object is cut by 
+      call add2s2(pm1,ym1,dpdy_mean,ntot1)  ! periodicboundary.  In this case,
+      call add2s2(pm1,zm1,dpdz_mean,ntot1)  ! set ._mean=0 and compensate in
+c                                           ! usrchk()  [ pff 10/21/04 ].
+
+c    Compute du/dn
+                CALL DUDXYZ (vxx,vx,RXM1,SXM1,TXM1,JACM1,1,1)
+                CALL DUDXYZ (vxy,vx,RYM1,SYM1,TYM1,JACM1,1,1)
+      if (if3d) CALL DUDXYZ (vxz,vx,RZM1,SZM1,TZM1,JACM1,1,1)
+c
+                CALL DUDXYZ (vyx,vy,RXM1,SXM1,TXM1,JACM1,1,1)
+                CALL DUDXYZ (vyy,vy,RYM1,SYM1,TYM1,JACM1,1,1)
+      if (if3d) CALL DUDXYZ (vyz,vy,RZM1,SZM1,TZM1,JACM1,1,1)
+c
+      if (if3d) then
+                CALL DUDXYZ (vzx,vz,RXM1,SXM1,TXM1,JACM1,1,1)
+                CALL DUDXYZ (vzy,vz,RYM1,SYM1,TYM1,JACM1,1,1)
+                CALL DUDXYZ (vzz,vz,RZM1,SZM1,TZM1,JACM1,1,1)
+      endif
+c
+c     Fill up viscous array w/ default
+c
+      if (istep.lt.1) call cfill(vdiff,param(2),ntot1)
+c
+      call col2(vxx,vdiff,ntot1)
+      call col2(vxy,vdiff,ntot1)
+      call col2(vxz,vdiff,ntot1)
+      call col2(vyx,vdiff,ntot1)
+      call col2(vyy,vdiff,ntot1)
+      call col2(vyz,vdiff,ntot1)
+      call col2(vzx,vdiff,ntot1)
+      call col2(vzy,vdiff,ntot1)
+      call col2(vzz,vdiff,ntot1)
+c
+      dragxt=0.0
+      dragyt=0.0
+      dragzt=0.0
+c
+      DO 100 II=1,NHIS
+         IF (HCODE(10,II).NE.'I') GOTO 100
+         IOBJ   = LOCHIS(1,II)
+         MEMTOT = NMEMBER(IOBJ)
+C
+c
+         IF (HCODE(1,II).NE.' ' .OR. HCODE(2,II).NE.' ' .OR.
+     $       HCODE(3,II).NE.' ' ) THEN
+            IFIELD = 1
+c
+c---------------------------------------------------------------------------
+c           Compute drag for this object
+c---------------------------------------------------------------------------
+c
+            dragvx=0.0
+            dragvy=0.0
+            dragvz=0.0
+            dragpx=0.0
+            dragpy=0.0
+            dragpz=0.0
+c
+            momvx=0.0
+            momvy=0.0
+            momvz=0.0
+c
+            check1=0.0
+            check2=0.0
+            DO 50 MEM=1,MEMTOT
+               ISK   = 0
+               IEG   = OBJECT(IOBJ,MEM,1)
+               IFC   = OBJECT(IOBJ,MEM,2)
+               IF (GLLNID(IEG).EQ.NID) THEN
+C                 This processor has a contribution
+                  IE = GLLEL(IEG)
+c
+c                 Pressure drag
+                  check1=check1+facint(one,one,area,ifc,ie)
+                  check2=check2+facint(one,uny,area,ifc,ie)
+c
+                  dragpx=dragpx+facint(pm1,unx,area,ifc,ie)
+                  dragpy=dragpy+facint(pm1,uny,area,ifc,ie)
+                  if (if3d) dragpz=dragpz+facint(pm1,unz,area,ifc,ie)
+c
+c                 Viscous drag
+                  if (if3d) then
+                     dragvx=dragvx+facint(vxx,unx,area,ifc,ie)
+     $                            +facint(vxy,uny,area,ifc,ie)
+     $                            +facint(vxz,unz,area,ifc,ie)
+     $                            +facint(vxx,unx,area,ifc,ie)
+     $                            +facint(vyx,uny,area,ifc,ie)
+     $                            +facint(vzx,unz,area,ifc,ie)
+                     dragvy=dragvy+facint(vyx,unx,area,ifc,ie)
+     $                            +facint(vyy,uny,area,ifc,ie)
+     $                            +facint(vyz,unz,area,ifc,ie)
+     $                            +facint(vxy,unx,area,ifc,ie)
+     $                            +facint(vyy,uny,area,ifc,ie)
+     $                            +facint(vzy,unz,area,ifc,ie)
+                     dragvz=dragvz+facint(vzx,unx,area,ifc,ie)
+     $                            +facint(vzy,uny,area,ifc,ie)
+     $                            +facint(vzz,unz,area,ifc,ie)
+     $                            +facint(vxz,unx,area,ifc,ie)
+     $                            +facint(vyz,uny,area,ifc,ie)
+     $                            +facint(vzz,unz,area,ifc,ie)
+c
+                     momvx=momvx-facint2(vxy,unx,unz,area,ifc,ie)
+     $                        -facint2(vyx,unx,unz,area,ifc,ie)
+     $                        -facint2(vyy,uny,unz,area,ifc,ie)
+     $                        -facint2(vyy,uny,unz,area,ifc,ie)
+     $                        -facint2(vzy,unz,unz,area,ifc,ie)
+     $                        -facint2(vyz,unz,unz,area,ifc,ie)
+     $                        +facint2(vxz,unx,uny,area,ifc,ie)
+     $                        +facint2(vzx,unx,uny,area,ifc,ie)
+     $                        +facint2(vyz,uny,uny,area,ifc,ie)
+     $                        +facint2(vzy,uny,uny,area,ifc,ie)
+     $                        +facint2(vzz,unz,uny,area,ifc,ie)
+     $                        +facint2(vzz,unz,uny,area,ifc,ie)
+                     momvy=momvy+facint2(vxx,unx,unz,area,ifc,ie)
+     $                        +facint2(vxx,unx,unz,area,ifc,ie)
+     $                        +facint2(vyx,uny,unz,area,ifc,ie)
+     $                        +facint2(vxy,uny,unz,area,ifc,ie)
+     $                        +facint2(vzx,unz,unz,area,ifc,ie)
+     $                        +facint2(vxz,unz,unz,area,ifc,ie)
+     $                        -facint2(vxz,unx,unx,area,ifc,ie)
+     $                        -facint2(vzx,unx,unx,area,ifc,ie)
+     $                        -facint2(vyz,uny,unx,area,ifc,ie)
+     $                        -facint2(vzy,uny,unx,area,ifc,ie)
+     $                        -facint2(vzz,unz,unx,area,ifc,ie)
+     $                        -facint2(vzz,unz,unx,area,ifc,ie)
+                     momvz=momvz-facint2(vxx,unx,uny,area,ifc,ie)
+     $                        -facint2(vxx,unx,uny,area,ifc,ie)
+     $                        -facint2(vyx,uny,uny,area,ifc,ie)
+     $                        -facint2(vxy,uny,uny,area,ifc,ie)
+     $                        -facint2(vzx,unz,uny,area,ifc,ie)
+     $                        -facint2(vxz,unz,uny,area,ifc,ie)
+     $                        +facint2(vxy,unx,unx,area,ifc,ie)
+     $                        +facint2(vyx,unx,unx,area,ifc,ie)
+     $                        +facint2(vyy,uny,unx,area,ifc,ie)
+     $                        +facint2(vyy,uny,unx,area,ifc,ie)
+     $                        +facint2(vzy,unz,unx,area,ifc,ie)
+     $                        +facint2(vyz,unz,unx,area,ifc,ie) 
+c
+                  else
+                     dragvx=dragvx+facint(vxx,unx,area,ifc,ie)
+     $                            +facint(vxy,uny,area,ifc,ie)
+                     dragvy=dragvy+facint(vyx,unx,area,ifc,ie)
+     $                            +facint(vyy,uny,area,ifc,ie)
+                  endif
+               ENDIF
+   50       CONTINUE
+c
+c          Sum contributions from all processors
+            call gop(drag,work,'+  ',11)
+            dragvx = -dragvx
+            dragvy = -dragvy
+            dragvz = -dragvz
+         ENDIF
+c
+c        Scale by user specified scale factor (for convenience)
+c
+         dragvx = scale*dragvx
+         dragvy = scale*dragvy
+         dragvz = scale*dragvz
+c
+         dragpx = scale*dragpx
+         dragpy = scale*dragpy
+         dragpz = scale*dragpz
+c
+         dragx(iobj) = dragvx+dragpx
+         dragy(iobj) = dragvy+dragpy
+         dragz(iobj) = dragvz+dragpz
+c
+c
+         momx(iobj)  = 0.5*momvx
+         momy(iobj)  = 0.5*momvy
+         momz(iobj)  = 0.5*momvz
+c
+         dragxt = dragxt + dragx(iobj)
+         dragyt = dragyt + dragy(iobj)
+         dragzt = dragzt + dragz(iobj)
+c
+         if (nio.eq.0.and.istep.eq.1) 
+     $      write(6,*) 'drag_calc: scale=',scale
+         if (nio.eq.0) then
+            write(6,6) istep,time,dragx(iobj),dragpx,dragvx,'dragx',iobj
+            write(6,6) istep,time,dragy(iobj),dragpy,dragvy,'dragy',iobj
+            if (if3d) 
+     $      write(6,6) istep,time,dragz(iobj),dragpz,dragvz,'dragz',iobj
+c
+c done by zly (3/17/03)
+c          if(if3d) then
+c             write(6,113) istep,time,momx,momy,momz
+c          else
+c             write(6,112) istep,time,momx,momy
+c          endif
+c         
+         endif
+    6    format(i8,1p4e15.7,2x,a5,i5)
+  112    format(i6,1p3e15.7,'  momx')
+  113    format(i6,1p4e15.7,'  momx')
+         if (istep.lt.10.and.nio.eq.0) 
+     $      write(6,9) 'check:',check1,check2,dpdx_mean,istep
+    9    format(a6,1p3e16.8,i9)
+c        if (time.gt.1.0.and.dragx.gt.10.) call emerxit
+  100 continue
+c
+      if (nio.eq.0) then
+         write(6,6) istep,time,dragxt,dragpx,dragvx,'drgxt',iobj
+         write(6,6) istep,time,dragyt,dragpy,dragvy,'drgyt',iobj
+         if (if3d) 
+     $   write(6,6) istep,time,dragzt,dragpz,dragvz,'drgzt',iobj
+      endif
+c
+      dragx(0) = dragxt
+      dragy(0) = dragyt
+      dragz(0) = dragzt
 c
       return
       end
@@ -997,14 +1273,11 @@ c-----------------------------------------------------------------------
 
          time_temp = time
          time      = atime   ! Output the duration of this avg
-         dtmp      = param(63)
-         param(63) = 1       ! Enforce 64-bit output
 
          call outpost2(uavg,vavg,wavg,pavg,tavg,ldimt,'avg')
          call outpost2(urms,vrms,wrms,prms,trms,ldimt,'rms')
          call outpost (uvms,vwms,wums,prms,trms,      'rm2')
 
-         param(63) = dtmp
          atime = 0.
          time  = time_temp  ! Restore clock
 
@@ -1693,6 +1966,18 @@ c
      $                     , vr(lr),vs(lr),vt(lr)
      $                     , wr(lr),ws(lr),wt(lr)
 c
+      common /ctorq/ dragx(0:maxobj),dragpx(0:maxobj),dragvx(0:maxobj)
+     $             , dragy(0:maxobj),dragpy(0:maxobj),dragvy(0:maxobj)
+     $             , dragz(0:maxobj),dragpz(0:maxobj),dragvz(0:maxobj)
+c
+     $             , torqx(0:maxobj),torqpx(0:maxobj),torqvx(0:maxobj)
+     $             , torqy(0:maxobj),torqpy(0:maxobj),torqvy(0:maxobj)
+     $             , torqz(0:maxobj),torqpz(0:maxobj),torqvz(0:maxobj)
+c
+     $             , dpdx_mean,dpdy_mean,dpdz_mean
+     $             , dgtq(3,4)
+c
+c
       n = lx1*ly1*lz1*nelv
 c
       call mappr(pm1,pr,xm0,ym0) ! map pressure onto Mesh 1
@@ -1754,35 +2039,48 @@ c
       enddo
 c
 c
-      ifield = 1
-      do iobj = 1,nobj
-         memtot = nmember(iobj)
-      do mem  = 1,memtot
-         ieg   = object(iobj,mem,1)
-         ifc   = object(iobj,mem,2)
-         if (gllnid(ieg).eq.nid) then ! this processor has a contribution
-            ie = gllel(ieg)
-            call drgtrq(dgtq,xm0,ym0,zm0,sij,pm1,vdiff,ifc,ie)
-
-            call cmult(dgtq,scale,12)
-
-            dragpx(iobj) = dragpx(iobj) + dgtq(1,1)  ! pressure 
-            dragpy(iobj) = dragpy(iobj) + dgtq(2,1)
-            dragpz(iobj) = dragpz(iobj) + dgtq(3,1)
-
-            dragvx(iobj) = dragvx(iobj) + dgtq(1,2)  ! viscous
-            dragvy(iobj) = dragvy(iobj) + dgtq(2,2)
-            dragvz(iobj) = dragvz(iobj) + dgtq(3,2)
-
-            torqpx(iobj) = torqpx(iobj) + dgtq(1,3)  ! pressure 
-            torqpy(iobj) = torqpy(iobj) + dgtq(2,3)
-            torqpz(iobj) = torqpz(iobj) + dgtq(3,3)
-
-            torqvx(iobj) = torqvx(iobj) + dgtq(1,4)  ! viscous
-            torqvy(iobj) = torqvy(iobj) + dgtq(2,4)
-            torqvz(iobj) = torqvz(iobj) + dgtq(3,4)
-         endif
-      enddo
+      nobj = 0
+      do ii=1,nhis
+        if (hcode(10,ii).EQ.'I') then
+          iobj   = lochis(1,ii)
+          memtot = nmember(iobj)
+          nobj   = max(iobj,nobj)
+c
+          if (hcode(1,ii).ne.' ' .or. hcode(2,ii).ne.' ' .or.
+     $      hcode(3,ii).ne.' ' ) then
+            ifield = 1
+c
+c           Compute drag for this object
+c
+            do mem=1,memtot
+               ieg   = object(iobj,mem,1)
+               ifc   = object(iobj,mem,2)
+               if (gllnid(ieg).eq.nid) then ! this processor has a contribution
+                  ie = gllel(ieg)
+                  call drgtrq(dgtq,xm0,ym0,zm0,sij,pm1,vdiff,ifc,ie)
+c
+                  call cmult(dgtq,scale,12)
+c
+                  dragpx(iobj) = dragpx(iobj) + dgtq(1,1)  ! pressure 
+                  dragpy(iobj) = dragpy(iobj) + dgtq(2,1)
+                  dragpz(iobj) = dragpz(iobj) + dgtq(3,1)
+c
+                  dragvx(iobj) = dragvx(iobj) + dgtq(1,2)  ! viscous
+                  dragvy(iobj) = dragvy(iobj) + dgtq(2,2)
+                  dragvz(iobj) = dragvz(iobj) + dgtq(3,2)
+c
+                  torqpx(iobj) = torqpx(iobj) + dgtq(1,3)  ! pressure 
+                  torqpy(iobj) = torqpy(iobj) + dgtq(2,3)
+                  torqpz(iobj) = torqpz(iobj) + dgtq(3,3)
+c
+                  torqvx(iobj) = torqvx(iobj) + dgtq(1,4)  ! viscous
+                  torqvy(iobj) = torqvy(iobj) + dgtq(2,4)
+                  torqvz(iobj) = torqvz(iobj) + dgtq(3,4)
+c
+               endif
+            enddo
+          endif
+        endif
       enddo
 c
 c     Sum contributions from all processors
@@ -1800,42 +2098,48 @@ c
       call gop(torqvx,w1,'+  ',maxobj+1)
       call gop(torqvy,w1,'+  ',maxobj+1)
       call gop(torqvz,w1,'+  ',maxobj+1)
-
+c
+      nobj = iglmax(nobj,1)
+c
       do i=1,nobj
          dragx(i) = dragpx(i) + dragvx(i)
          dragy(i) = dragpy(i) + dragvy(i)
          dragz(i) = dragpz(i) + dragvz(i)
-
+c
          torqx(i) = torqpx(i) + torqvx(i)
          torqy(i) = torqpy(i) + torqvy(i)
          torqz(i) = torqpz(i) + torqvz(i)
-
+c
          dragpx(0) = dragpx (0) + dragpx (i)
          dragvx(0) = dragvx (0) + dragvx (i)
          dragx (0) = dragx  (0) + dragx  (i)
-
+c
          dragpy(0) = dragpy (0) + dragpy (i)
          dragvy(0) = dragvy (0) + dragvy (i)
          dragy (0) = dragy  (0) + dragy  (i)
-
+c
          dragpz(0) = dragpz (0) + dragpz (i)
          dragvz(0) = dragvz (0) + dragvz (i)
          dragz (0) = dragz  (0) + dragz  (i)
-
+c
          torqpx(0) = torqpx (0) + torqpx (i)
          torqvx(0) = torqvx (0) + torqvx (i)
          torqx (0) = torqx  (0) + torqx  (i)
-
+c
          torqpy(0) = torqpy (0) + torqpy (i)
          torqvy(0) = torqvy (0) + torqvy (i)
          torqy (0) = torqy  (0) + torqy  (i)
-
+c
          torqpz(0) = torqpz (0) + torqpz (i)
          torqvz(0) = torqvz (0) + torqvz (i)
          torqz (0) = torqz  (0) + torqz  (i)
+c
       enddo
-
-      do i=1,nobj
+c
+      i0 = 0
+      if (nobj.le.1) i0 = 1  ! one output for single-object case
+c
+      do i=i0,nobj
         if (nio.eq.0) then
           if (if3d.or.ifaxis) then
            if (ifdout) then
@@ -1860,7 +2164,7 @@ c
         endif
     6   format(i8,1p4e19.11,2x,i5,a5)
       enddo
-
+c
       return
       end
 c-----------------------------------------------------------------------
@@ -2857,27 +3161,44 @@ c
       x3max=glmax(zm0(1,1,1,1),n)
 c
       call rzero(strsmx,maxobj)
+c
+c
+      nobj = 0
+      do ii=1,nhis
+        if (hcode(10,ii).EQ.'I') then
+          iobj   = lochis(1,ii)
+          memtot = nmember(iobj)
+          nobj   = max(iobj,nobj)
+c
+          if (hcode(1,ii).ne.' ' .or. hcode(2,ii).ne.' ' .or.
+     $      hcode(3,ii).ne.' ' ) then
+            ifield = 1
+c
+c           Compute max stress for this object
+c
+            strsmx(ii) = 0.
+            do mem=1,memtot
+               ieg   = object(iobj,mem,1)
+               ifc   = object(iobj,mem,2)
+               if (gllnid(ieg).eq.nid) then ! this processor has a contribution
 
-      ifield = 1
+                  ie = gllel(ieg)
+                  call get_strsmax
+     $                    (strsmxl,xm0,ym0,zm0,sij,pm1,vdiff,ifc,ie)
 
-      strsmx(ii) = 0.
-      do iobj = 1,nobj
-         memtot = nmember(iobj)
-      do mem  = 1,memtot
-         ieg   = object(iobj,mem,1)
-         ifc   = object(iobj,mem,2)
-         if (gllnid(ieg).eq.nid) then ! this processor has a contribution
-            ie = gllel(ieg)
-            call get_strsmax(strsmxl,xm0,ym0,zm0,sij,pm1,vdiff,ifc,ie)
-            call cmult(strsmxl,scale,1)
-            strsmx(ii)=max(strsmx(ii),strsmxl)
-         endif
-      enddo
+                  call cmult(strsmxl,scale,1)
+                  strsmx(ii)=max(strsmx(ii),strsmxl)
+
+               endif
+            enddo
+          endif
+        endif
       enddo
 c
 c     Max contributions over all processors
 c
       call gop(strsmx,w1,'M  ',maxobj)
+
 
       return
       end
@@ -4016,7 +4337,7 @@ c     will not.
          call fgslib_gs_op(gsh_fld(ifld),d,1,3,0) ! min over all elements
          nchange = iglsum(nchange,1)
          dmax = glmax(dmax,1)
-         if (nio.eq.0.and.loglevel.gt.2) write(6,1) ipass,nchange,dmax,b
+         if (nio.eq.0) write(6,1) ipass,nchange,dmax,b
     1    format(i9,i12,1pe12.4,' max distance b: ',a3)
          if (nchange.eq.0) goto 1000
       enddo
@@ -4372,4 +4693,3 @@ c     enddo
       return
       end
 c-----------------------------------------------------------------------
-

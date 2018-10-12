@@ -7,7 +7,7 @@
 #bin_nek_tools=`cd ../bin && pwd`
 
 # Fortran compiler
-#FC="gfortran"
+FC="gfortran"
 FFLAGS="-std=legacy"
 
 # C compiler
@@ -128,8 +128,8 @@ case $FCcomp in
                CPPF="-Mpreprocess"
                BIGMEM="-mcmodel=medium"
                ;;
-  *gfortran*)  R8="-fdefault-real-8 -fdefault-double-8"
-               CPPF="-std=legacy -cpp"
+  *gfortran*)  R8="-fdefault-real-8"
+               CPPF="-cpp"
                BIGMEM="-mcmodel=medium"
                ;;
   *ifort*)     R8="-r8"

@@ -4,8 +4,6 @@
 #include <string.h>
 #include "name.h"
 
-
-#define cexit FORTRAN_UNPREFIXED(cexit, CEXIT)
 #define print_stack FORTRAN_UNPREFIXED(print_stack, PRINT_STACK)
 #define sizeOfLongInt FORTRAN_UNPREFIXED(sizeoflongint, SIZEOFLONGINT)
 #define getmaxrss FORTRAN_UNPREFIXED(getmaxrss, GETMAXRSS)
@@ -71,9 +69,4 @@ void set_stdout(char *f, int *sid, int flen)
     printf("redirecting stdout to %s\n",logfile);
     freopen(logfile, "w+", stdout);
   }
-}
-
-void cexit(int *ierr)
-{
-  exit(*ierr);
 }

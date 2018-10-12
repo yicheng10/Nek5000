@@ -1466,9 +1466,6 @@ c       Scan through and output .rea file until end of file
       else
         call byte_close()
       endif
-c
-      open(unit=99,file='box.tmp')
-      close(unit=99,status='delete')
 
       end
 c-----------------------------------------------------------------------

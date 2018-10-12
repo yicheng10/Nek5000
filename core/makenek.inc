@@ -13,12 +13,6 @@ function make_3rd_party() {
      ./install
   fi
   cd $CASEDIR
-
-  if [ $HYPRE -ne 0 ]; then
-     cd $SOURCE_ROOT/3rd_party/hypre
-     ./install
-  fi
-  cd $CASEDIR
 }
 
 function clean_3rd_party() {
@@ -26,8 +20,6 @@ function clean_3rd_party() {
   cd $SOURCE_ROOT/3rd_party/gslib; ./install clean 2>/dev/null
   cd $CASEDIR
   cd $SOURCE_ROOT/3rd_party/cvode; ./install clean 2>/dev/null
-  cd $CASEDIR
-  cd $SOURCE_ROOT/3rd_party/hypre; ./install clean 2>/dev/null
   cd $CASEDIR
 }
 
@@ -43,8 +35,10 @@ if [ "$PPLIST" == "?" ]; then
   echo "  BGQ         use BGQ optimized mxm"
   echo "  XSMM        use libxsmm for mxm"
   echo "  CVODE       compile with CVODE support for scalars"
-  echo "  HYPRE       compile with HYPRE support"
   echo "  VENDOR_BLAS use VENDOR BLAS/LAPACK"
+  echo "  EXTBAR      add underscore to exit call (for BGQ)"
+  echo "  NEKNEK      activate overlapping mesh solver (experimental)"
+  echo "  CMTNEK      activate DG compressible-flow solver (experimental)"
   exit 1
 fi
 
@@ -76,7 +70,7 @@ if [ "$mver" != "17.0.4" ]; then
 fi
 
 if [ ! "$SOURCE_ROOT_GSLIB" ]; then
-  SOURCE_ROOT_GSLIB="$SOURCE_ROOT/3rd_party/gslib"
+  SOURCE_ROOT_GSLIB="$SOURCE_ROOT/3rd_party/gslib/lib"
   export SOURCE_ROOT_GSLIB
 fi
 
@@ -134,7 +128,6 @@ if ! which `echo $FC | awk '{print $1}'` 1>/dev/null ; then
   exit 1
 fi
 
-
 # test if C compiler exists
 if ! which `echo $CC | awk '{print $1}'` 1>/dev/null ; then 
   echo "FATAL ERROR: Cannot find `echo $CC | awk '{print $1}'`!"
@@ -182,12 +175,12 @@ fi
 case $FCcomp in
   *pgf*)        FFLAGS+=" -r8 -Mpreprocess"
                ;;
-  *gfortran*)   FFLAGS+=" -std=legacy -fdefault-real-8 -fdefault-double-8 -cpp"
+  *gfortran*)   FFLAGS+=" -fdefault-real-8 -fdefault-double-8 -cpp"
                ;;
   *ifort*)      FFLAGS+=" -r8 -fpconstant -fpp"
                ;;
-  *xlf*)        FFLAGS+=" -qfixed -qrealsize=8 -qdpc=e -qsuffix=cpp=f -qsuppress=cmpmsg"
-                PPPO="-WF,"
+  *xlf*)        FFLAGS+=" -qrealsize=8 -qdpc=e -qsuffix=cpp=f -qsuppress=cmpmsg"
+               PPPO="-WF,"
                ;;
   *)  echo "ERROR: Cannot find a supported compiler!"
       echo ""
@@ -211,18 +204,6 @@ if nm test_underscore.o | grep -q test_ ; then
   UNDERSCORE=1
 fi
 \rm test_underscore.* 2>/dev/null
-
-# Check if ld option is available
-cat > _test.f << _ACEOF
-      program test
-      end
-_ACEOF
-$FCcomp -Wl,--allow-multiple-definition -o _test _test.f >/dev/null 2>&1 || true
-\rm _test.f 2>/dev/null
-if [ -f _test ]; then
-  LDFLAGS+=" -Wl,--allow-multiple-definition"
-  \rm _test 2>/dev/null
-fi
 
 # set preprocessor symbols
 if [ $MPI -eq 0 ]; then
@@ -248,9 +229,13 @@ PPLIST="${PPLIST}"
 
 # add user defined preprocessor symbols
 CMT=0
+NEKNEK=0
 MPIIO=1
 for i in $PPLIST
 do
+   if [ "$i" == "NEKNEK" ]; then
+     NEKNEK=1
+   fi
    if [ "$i" == "CMTNEK" ]; then
      CMT=1
    fi
@@ -275,12 +260,6 @@ else
    CVODE=0
 fi
 
-if echo $PPLIST | grep -q 'HYPRE' ; then 
-   HYPRE=1
-else
-   HYPRE=0
-fi
-
 MXM_USER="mxm_std.o"
 if echo $PPLIST | grep -q 'BGQ' ; then 
    MXM_USER+=" mxm_bgq.o" 
@@ -292,37 +271,32 @@ if echo $PPLIST | grep -q 'VENDOR_BLAS' ; then
 fi
 
 # gslib build options
-GSLIB_PREFIX="gslib_"
-GSLIB_FPREFIX="fgslib_"
 GSLIB_OPT+=" MPI=$MPI MPIIO=$MPIIO"
 GSLIB_OPT+=" ADDUS=$UNDERSCORE USREXIT=1 BLAS=2"
-GSLIB_OPT+=" PREFIX=$GSLIB_PREFIX FPREFIX=$GSLIB_FPREFIX"
-GSLIB_IFLAGS="-DPREFIX=$GSLIB_PREFIX -DFPREFIX=$GSLIB_FPREFIX -DGLOBAL_LONG_LONG"
-GSLIB_IFLAGS+=" -I$SOURCE_ROOT_GSLIB/gslib/src"
-USR_LFLAGS+=" -L$SOURCE_ROOT_GSLIB/lib -lgs"
+GSLIB_OPT+=" PREFIX=gslib_ FPREFIX=fgslib_"
+USR_LFLAGS+=" -L$SOURCE_ROOT_GSLIB -lgs"
 
 # tweak makefile template 
 echo "generating makefile ..."
 rm -rf makefile 2>/dev/null
 
-sed -e "s:^FC[ ]*=.*:FC=$FC:" \
--e "s:^CC[ ]*=.*:CC=$CC:" \
--e "s:^FFLAGS[ ]*=.*:FFLAGS=$FFLAGS:" \
--e "s:^CFLAGS[ ]*=.*:CFLAGS=$CFLAGS:" \
--e "s:^LDFLAGS[ ]*=.*:LDFLAGS=$LDFLAGS:" \
+sed -e "s:^FC[ ]*=.*:FC\:=$FC:" \
+-e "s:^CC[ ]*=.*:CC\:=$CC:" \
+-e "s:^FFLAGS[ ]*=.*:FFLAGS\:=$FFLAGS:" \
+-e "s:^CFLAGS[ ]*=.*:CFLAGS\:=$CFLAGS:" \
 -e "s/^PPPO[ ]*=.*/PPPO=$PPPO/" \
 -e "s/^PPS[ ]*=.*/PPS=$PPLIST/" \
 -e "s:^MXM[ ]*=.*:MXM=$MXM_USER:" \
 -e "s:^BLAS[ ]*=.*:BLAS=$BLAS:" \
--e "s/^MPI[ ]*=.*/MPI=$MPI/" \
--e "s/^CVODE[ ]*=.*/CVODE=$CVODE/" \
--e "s/^CMT[ ]*=.*/CMT=$CMT/" \
--e "s:^GSLIB_IFLAGS[ ]*=.*:GSLIB_IFLAGS\:=${GSLIB_IFLAGS}:" \
--e "s/^VISIT[ ]*=.*/VISIT=${VISIT}/" \
--e "s:^USR[ ]*=.*:USR=$USR:" \
--e "s:^USR_LFLAGS[ ]*=.*:USR_LFLAGS=$USR_LFLAGS:" \
--e "s:^S[ ]*=.*:S=${SOURCE_ROOT}/core:" \
--e "s:^SCMT[ ]*=.*:SCMT=${SOURCE_ROOT}/core/cmt:" \
+-e "s/^MPI[ ]*=.*/MPI:=$MPI/" \
+-e "s/^CVODE[ ]*=.*/CVODE:=$CVODE/" \
+-e "s/^CMT[ ]*=.*/CMT:=$CMT/" \
+-e "s/^NEKNEK[ ]*=.*/NEKNEK:=$NEKNEK/" \
+-e "s/^VISIT[ ]*=.*/VISIT:=${VISIT}/" \
+-e "s:^USR[ ]*=.*:USR\:=$USR:" \
+-e "s:^USR_LFLAGS[ ]*=.*:USR_LFLAGS\:=$USR_LFLAGS:" \
+-e "s:^S[ ]*=.*:S\:=${SOURCE_ROOT}/core:" \
+-e "s:^SCMT[ ]*=.*:SCMT\:=${SOURCE_ROOT}/core/cmt:" \
 $SOURCE_ROOT/core/makefile.template >.makefile
 
 if [ $VISIT -ne 0 ]; then
@@ -350,17 +324,6 @@ if [ $VISIT -ne 0 ]; then
 
   mv .makefile.tmp .makefile
   echo ""
-fi
-
-if [ $HYPRE -ne 0 ]; then
-  PATH_HYPRE=$SOURCE_ROOT/3rd_party/hypre
-  USR_LFLAGS+=" -L$PATH_HYPRE/lib -lHYPRE"  
-  HYPRE_INC="$PATH_HYPRE/include"
-  sed -e "s:^HYPRE_IFLAGS[ ]*=.*:HYPRE_IFLAGS\:=-I${HYPRE_INC}:" \
-      -e "s:^USR_LFLAGS[ ]*=.*:USR_LFLAGS=$USR_LFLAGS:" \
-      .makefile > .makefile.tmp
-
-  mv .makefile.tmp .makefile
 fi
 
 if [ "$USR" != "" ]; then
@@ -415,23 +378,6 @@ if ! cat SIZE | grep -q 'SIZE.inc' ; then
      echo >>SIZE
      echo 'c automatically added by makenek' >>SIZE
      echo '      parameter (lfdm=0)  ! == 1 for fast diagonalization method' >> SIZE
-  fi
-  if ! cat SIZE | grep -qi 'nsessmax' ; then
-     echo >>SIZE
-     echo 'c automatically added by makenek' >>SIZE
-     echo '      parameter (nsessmax=1)  ! max sessions to NEKNEK' >> SIZE
-  fi
-  if ! cat SIZE | grep -qi 'nmaxl_nn' ; then
-     echo >>SIZE
-     echo 'c automatically added by makenek' >>SIZE
-     echo '      parameter (nmaxl_nn=' >> SIZE
-     echo '     $          min(1+(nsessmax-1)*2*ldim*lxz*lelt,2*ldim*lxz*lelt))' >>SIZE
-  fi
-  if ! cat SIZE | grep -qi 'nfldmax_nn' ; then
-     echo >>SIZE
-     echo 'c automatically added by makenek' >>SIZE
-     echo '      parameter (nfldmax_nn=' >> SIZE
-     echo '     $          min(1+(nsessmax-1)*(ldim+1+ldimt),ldim+1+ldimt))' >>SIZE
   fi
   if ! cat SIZE | grep -qi 'nio' ; then
      echo >>SIZE

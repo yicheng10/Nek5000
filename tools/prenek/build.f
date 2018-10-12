@@ -21,26 +21,26 @@ c-----------------------------------------------------------------------
       if (ifconj_merge) then
 
          call build0             ! Read in fluid mesh
-         melv = nel + 0
+         nelv = nel
 
          call imp_mesh(.false.)  ! Get thermal mesh
-         melt  = nel
-         ncond = melt-melv
+         nelt  = nel
+         ncond = nelt-nelv
 
-         call set_igroup(melv,melt)
+         call set_igroup(nelv,nelt)
 
          call build2             ! Set bcs
 
-         melt  = nel
-         ncond = melt-melv
+         nelt  = nel
+         ncond = nelt-nelv
 
       else          ! Std. menu-driven mesh construction
 
          call build0
          call build1
 
-         melt = nel
-         melv = nel
+         nelt = nel
+         nelv = nel
          call build2
 
       endif
@@ -329,10 +329,7 @@ C     Only floor of elevator hilighted during modify
  160     continue
          ifautosave = .false.
       ELSE IF(CHOICE.EQ.'REDRAW MESH')THEN
-         nelcap_save = nelcap
-         nelcap      = nel
          call redraw_mesh
-         nelcap      = nelcap_save
       ELSE IF(CHOICE.EQ.'ZOOM')THEN
          call setzoom
          call redraw_mesh
@@ -1217,10 +1214,8 @@ c     Successfully opened file, scan until 'MESH DATA' is found
       call get_flow_heat(iflow,iheat,nlogic,47) ! iflow/iheat _local_ logicals
 
       call readscan('MESH DATA',9,47)
-      read (47,*) nelint,ndimn,nelinv
-
-      nelnv = nelinv + nel  ! With velocity
-      nelnt = nelint + nel  ! With temperature
+      read (47,*) nelin,ndimn
+      neln = nelin + nel
 
       if (ndimn.ne.ndim) then
          call prs('Dimension must match dimension of current session.$')
@@ -1229,10 +1224,10 @@ c     Successfully opened file, scan until 'MESH DATA' is found
          return
       endif
 
-      if (nelnt.ge.nelm) then
+      if (neln.ge.nelm) then
          call prs('Sorry, number of elements would exceed nelm.$')
          call prs('Returning.$')
-         call prii(nelnt,nelm)
+         call prii(neln,nelm)
          close(47)
          return
       endif
@@ -1245,22 +1240,14 @@ c     Read geometry
 
       ierr=imp_geom(x(1,nels),y(1,nels),z(1,nels),nelm
      $             ,numapt(nels),letapt(nels),igroup(nels)
-     $             ,ndim,nelint,47)
+     $             ,ndim,nelin,47)
       if (ierr.ne.0) then
          call prs('Error reading geometry... returning.$')
          close(47)
          return
       endif
-
-c     Check group number for Conjugate Heat Transfer import
-
-      if (nelint.gt.nelinv) then
-         do e=nelnv+1,nelnt
-            igroup(e)=1
-         enddo
-      endif
-
-      ierr=imp_curv(nc,ccurve,curve,ndim,nelint,nel,47)
+c
+      ierr=imp_curv(nc,ccurve,curve,ndim,nelin,nel,47)
       if (ierr.ne.0) then
          call prs('Error reading curve side info... returning.$')
          close(47)
@@ -1273,22 +1260,17 @@ c
 c
       read(47,3) d
     3 format(a3)
-
+c
       ifld0 = 1
       if (.not.iflow) ifld0=2
-c     write(6,*) 'IFLD:',ifld0,nflds,iflow,iheat
-
+      write(6,*) 'IFLD:',ifld0,nflds,iflow,iheat
+c
       do ifld=ifld0,nflds
          if (.not.iflow) read(47,*) ans  ! dummy read
-
-         nelget=nelint
-         if (ifld.eq.1) nelget=nelinv
-c        write(6,*) nelget,nelinv,nelint,' nelget'
-
          ierr=imp_bc(cbc(1,nels,ifld),bc(1,1,nels,ifld),ibc(1,nels,ifld)
-     $      ,ndim,nelget,nel,47)
+     $      ,ndim,nelin,nel,47)
          if (ierr.ne.0) then
-            call prsii('nelget,ifld:$',nelget,ifld)
+            call prsii('nelin,ifld:$',nelin,ifld)
             call prs('Error reading boundary conditions. Returning.$')
             close(47)
             return
@@ -1309,18 +1291,14 @@ c
         endif
 
         ie0=nel+1
-        ie1=nelnt
+        ie1=neln
         call translate_sub_mesh(ie0,ie1,xt,yt,zt)
       endif
 
-c     write(6,*) 'This is nel,ncurve old:',nel,ncurve
-
-      nel  = nelnt
-      nelt = nelnt
-      nelv = nelnv
-
+      write(6,*) 'This is nel,ncurve old:',nel,ncurve
+      nel  = neln
       ncurve = ncurve + nc
-c     write(6,*) 'This is nel,ncurve new:',nel,ncurve
+      write(6,*) 'This is nel,ncurve new:',nel,ncurve
 
       call gencen
 

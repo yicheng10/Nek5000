@@ -104,7 +104,7 @@ c                                    irnk is # unique points
             endif
          enddo 
          write(6,*) "WARNING:Missing Face Connection Not Resolved"
-         call exitt(1) 
+         call exit
       endif
   15  continue
 
@@ -217,9 +217,8 @@ c     read nekton .rea file and make a mesh
       call getreafile('Input .rea / .re2 name:$',ifbinary,io,ierr)
       if (ierr.gt.0) then 
          write(6,'(A)') 'Error no .rea / .re2 file found!'
-c         call linearmsh(cell,nelv,nelt,ndim)
-c         return
-         call exitt(1) 
+         call linearmsh(cell,nelv,nelt,ndim)
+         return
       endif
 
       write(6,'(A)') 'Input mesh tolerance (default 0.2):'
@@ -334,12 +333,18 @@ c-----------------------------------------------------------------------
 c-----------------------------------------------------------------------
       subroutine exitti(name,ie)
       character*40 name
-      write(6,*) name, ie
+      write(6,*) name
+      write(6,*) ie,' quit'
+c     ke = 2*ie
+c     ff = 1./(ke-ie-ie)
       stop
       end
 c-----------------------------------------------------------------------
       subroutine exitt(ie)
-      write(6,*) 'exit status', ie
+      write(6,*)
+      write(6,*) ie,' quit'
+c     ke = 2*ie
+c     ff = 1./(ke-ie-ie)
       stop
       end
 c-----------------------------------------------------------------------

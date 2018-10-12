@@ -397,6 +397,27 @@ c        Take direct stiffness avg of mesh
 c
          ifieldo = ifield
          if (.not.ifneknekm) CALL GENCOOR (XM3,YM3,ZM3)
+         if (ifheat) then
+            ifield = 2
+            CALL dssum(xm3,lx3,ly3,lz3)
+            call col2 (xm3,tmult,ntot3)
+            CALL dssum(ym3,lx3,ly3,lz3)
+            call col2 (ym3,tmult,ntot3)
+            if (if3d) then
+               CALL dssum(xm3,lx3,ly3,lz3)
+               call col2 (xm3,tmult,ntot3)
+            endif
+         else
+            ifield = 1
+            CALL dssum(xm3,lx3,ly3,lz3)
+            call col2 (xm3,vmult,ntot3)
+            CALL dssum(ym3,lx3,ly3,lz3)
+            call col2 (ym3,vmult,ntot3)
+            if (if3d) then
+               CALL dssum(xm3,lx3,ly3,lz3)
+               call col2 (xm3,vmult,ntot3)
+            endif
+         endif
          CALL GEOM1 (XM3,YM3,ZM3)
          CALL GEOM2
          CALL UPDMSYS (1)
@@ -1093,9 +1114,6 @@ c
       ttime=0.0
       tcvf =0.0
       tproj=0.0
-      tuchk=0.0
-      tmakf=0.0
-      tmakq=0.0
 C
       return
       end
@@ -1237,7 +1255,6 @@ c
 c
       tttstp = tttstp + 1e-7
       if (nio.eq.0) then
-         write(6,*) ''
          write(6,'(A)') 'runtime statistics:'
 
          pinit=tinit/tttstp
@@ -1264,21 +1281,13 @@ c        E solver timings
          peslv=teslv/tttstp 
          write(6,*) 'eslv time',neslv,teslv,peslv
 
-c        makef timings
-         pmakf=tmakf/tttstp 
-         write(6,*) 'makf time',tmakf,pmakf
-
-c        makeq timings
-         pmakq=tmakq/tttstp 
-         write(6,*) 'makq time',tmakq,pmakq
-
 c        CVODE RHS timings
          pcvf=tcvf/tttstp
          if(ifcvode) write(6,*) 'cfun time',ncvf,tcvf,pcvf
 
 c        Resiual projection timings
          pproj=tproj/tttstp
-         write(6,*) 'proj time',tproj,pproj
+         write(6,*) 'proj time',0,tproj,pproj
 
 c        Variable properties timings
          pspro=tspro/tttstp
@@ -1294,10 +1303,6 @@ c        USERBC timings
          write(6,*) 'usbc min ',min_usbc 
          write(6,*) 'usbc max ',max_usbc 
          write(6,*) 'usb  avg ',avg_usbc 
-
-c        User check timings
-         puchk=tuchk/tttstp
-         write(6,*) 'uchk time',tuchk,puchk
 
 c        Operator timings
          pmltd=tmltd/tttstp
@@ -1404,20 +1409,17 @@ c        MPI_Allreduce(sync) timings
          write(6,*) 'allreduce_sync  max ',max_gop_sync 
          write(6,*) 'allreduce_sync  avg ',avg_gop_sync 
 #endif
-         write(6,*) ''
       endif
 
-      if (lastep.eq.1) then
-        if (nio.eq.0)  ! header for timing
-     $    write(6,1) 'tusbc','tdadd','tcrsl','tvdss','tdsum',
-     $               ' tgop',ifsync
-    1     format(/,'#',2x,'nid',6(7x,a5),4x,'qqq',1x,l4)
+      if (nio.eq.0)  ! header for timing
+     $ write(6,1) 'tusbc','tdadd','tcrsl','tvdss','tdsum',' tgop',ifsync
+    1 format(/,'#',2x,'nid',6(7x,a5),4x,'qqq',1x,l4)
 
-        call blank(s132,132)
-        write(s132,132) nid,tusbc,tdadd,tcrsl,tvdss,tdsum,tgop
-  132   format(i12,1p6e12.4,' qqq')
-        call pprint_all(s132,132,6)
-      endif
+      call blank(s132,132)
+      write(s132,132) nid,tusbc,tdadd,tcrsl,tvdss,tdsum,tgop
+  132 format(i12,1p6e12.4,' qqq')
+      call pprint_all(s132,132,6)
+
 #endif
 
       return
@@ -1661,8 +1663,8 @@ c     in userf then the true FFX is given by ffx_userf + scale.
       scale = delta_flow/base_flow
       scale_vf(icvflow) = scale
       if (nio.eq.0) write(6,1) istep,chv(icvflow)
-     $   ,time,scale,delta_flow,current_flow,flow_rate
-    1    format(i11,'  Volflow ',a1,11x,1p5e13.4)
+     $   ,scale,delta_flow,current_flow,flow_rate
+    1    format(i11,'  volflow ',a1,11x,1p4e13.4)
 
       call add2s2(vx,vxc,scale,ntot1)
       call add2s2(vy,vyc,scale,ntot1)
