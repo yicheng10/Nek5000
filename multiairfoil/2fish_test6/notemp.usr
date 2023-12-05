@@ -1,0 +1,335 @@
+      subroutine uservp(ix,iy,iz,eg) ! set variable properties
+
+c      implicit none
+      integer ix, iy, iz, eg
+
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      integer e
+c     e = gllel(eg)
+
+      udiff  = 0.0
+      utrans = 0.0
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userf(ix,iy,iz,eg) ! set acceleration term
+c
+c     Note: this is an acceleration term, NOT a force!
+c     Thus, ffx will subsequently be multiplied by rho(x,t).
+c
+c      implicit none
+
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      integer ix, iy, iz, eg
+c     e = gllel(eg)
+c
+      Fr2 = 1.0000
+      ffx = 0.0
+c     ffy = (temp - y) / Fr2
+      ffy = 0.0
+      ffz = 0.0
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userq(ix,iy,iz,eg) ! set source term
+
+c      implicit none
+      integer ix,iy,iz,eg
+
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      integer e
+c     e = gllel(eg)
+
+      qvol   = 0.0
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userbc(ix,iy,iz,iside,eg) ! set up boundary conditions
+      integer ix,iy,iz,iside,eg
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+      include 'NEKNEK'
+
+
+      ie = gllel(eg)
+      if (imask(ix,iy,iz,ie).eq.0) then
+         if (IFMVBD) then !Moving
+            call u_meshv(x,y,z,ux,uy,uz)
+         else
+           ux=1.
+           uy=0.
+           uz=0.
+         endif
+      else
+         ux = valint(ix,iy,iz,ie,1)
+         uy = valint(ix,iy,iz,ie,2)
+         uz = 0.0
+c         uz = valint(ix,iy,iz,ie,ldim)
+      endif
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine useric(ix,iy,iz,eg) ! set up initial conditions
+
+c      implicit none
+
+      integer ix,iy,iz,eg
+
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      ux   = 1.0
+      uy   = 0.0
+      uz   = 0.0
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userchk()
+      include 'SIZE'
+      include 'TOTAL'
+      common /k10idom/ domid
+      integer e,f,domid
+      common /myoutflow/ d(lx1,ly1,lz1,lelt),m1(lx1*ly1*lz1,lelt)
+      real m1
+      common /ihfpt/ ihndl
+      integer ihndl
+      real rwk
+      integer iwk,npts
+      common /rstdata/ vlasty,vlastz,timelst,atimest,dtimest,vavgy,vavgz
+      real vlasty,vlastz,timelst,atimest,dtimest,vavgy,vavgz
+
+      if (IFMVBD) then
+         ifusermv = .true.
+         ifxyo    = .true.
+      endif
+
+      rq  = 1.
+      uin = 0.
+      call turb_outflow(d,m1,rq,uin)
+c     write(6,*) istep, nid, domid, 'debug userchk 1'
+
+
+c      scale = 2/(pi/4.)  !scale = 2/(pi*D*D/4)
+c      if (istep.eq.0.and.domid.eq.0.or.domid.eq.1) call set_obj  ! define objects for surface integrals
+c      write(6,*) istep, nid, domid, 'debug userchk 2'
+c      if (domid.eq.0.or.domid.eq.1.and.istep.gt.100) 
+c     $      call torque_calc(scale,x0,.true.,.false.)
+c      write(6,*) istep, nid, domid, 'debug userchk 3'
+
+      call my_mesh_velocity
+
+c     if (mod(istep,10).eq.0) call outpost(vx,vy,vz,pr,t,'   ')
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userqtl ! Set thermal divergence
+      common /k10idom/ domid
+      integer e,f,domid
+
+c     write(6,*) istep, nid, domid, 'debug userqtl 1'
+      call userqtl_scig 
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat()   ! This routine to modify element vertices
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKNEK'
+
+c     common /k10idom/ domid
+c     integer domid
+
+      ngeom = 5
+      ninter = 3
+c      nfld_neknek=4
+
+c     domid = 2
+
+c     Find whether you are in the airfoil or background mesh
+c     ntot    = nelv * 2**ldim
+c     xmax    = glmax   (xc,ntot)
+c     xmax_ms = glmax_ms(xc,ntot)
+c     if (xmax.lt.xmax_ms)  domid = 0
+
+c     if (xmx.lt.xmxg) then
+c       if (xmx.lt.5) then
+c         domid = 0
+c       else 
+c         domid = 1
+c       endif 
+c     endif
+
+c     write(6,*) 'usrdat domid xmax xmax_ms', domid, xmax, xmax_ms
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat2()  ! This routine to modify mesh coordinates
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      common /k10idom/ domid
+      integer e,f,domid
+
+      domid = 2
+      n    = lx1*ly1*lz1*nelv
+      xmx  = glmax(xm1,n)
+      xmxg = glmax_ms(xm1,n)
+
+      call nekgsync
+
+      if (xmx.lt.xmxg) then
+        ifusermv = .true.
+        IFMVBD   = .true.
+        if (xmx.lt.5) then
+          domid = 0
+        else 
+          domid = 1
+        endif 
+      endif
+
+      if (domid .eq. 0 .or. domid .eq. 1) then
+         call setbc(1,1,'int')
+         call setbc(2,1,'mv ')
+      else 
+         call setbc(1,1,'int')
+         call setbc(2,1,'v  ')
+         call setbc(3,1,'O  ')
+         call setbc(4,1,'SYM')
+      endif
+
+
+      call fix_geom
+
+c      write(6,*) 'usrdat2 1', nid
+c      if (domid .eq. 0) call gen_re2(0)
+      write(6,*) 'usrdat2 2', nid
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat3()
+
+c      implicit none
+
+      include 'SIZE'
+      include 'TOTAL'
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine my_mesh_velocity
+      include 'SIZE'
+      include 'TOTAL'
+
+      if (IFMVBD) then                        !Moving mesh
+        n=nx1*ny1*nz1*nelv
+        do i=1,n
+           x = xm1(i,1,1,1)
+           y = ym1(i,1,1,1)
+           z = zm1(i,1,1,1)
+           call u_meshv(x,y,z,ux,uy,uz)
+           wx(i,1,1,1) = ux
+           wy(i,1,1,1) = uy
+           wz(i,1,1,1) = uz
+        enddo
+      endif
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine u_meshv(x,y,z,wx,wy,wz)
+      include 'SIZE'
+      include 'TSTEP'
+      common /k10idom/ domid
+      integer domid
+      real rpm
+
+      one   = 1.0
+      pi    = 4.0*atan(one)
+      om    = 2.0
+      freq  = 1.0
+      A     = 0.2
+      omega = A*cos(om * time)
+      if (domid .eq. 0) then
+        rv  = sqrt(y**2+x**2)
+        thv = atan2(y,x)
+      else if (domid .eq. 1) then 
+        rv  = sqrt(y**2+(x-10.)**2)
+        thv = atan2(y,x-10.)
+      endif
+      wx    = -omega*rv*sin(thv)
+      wy    =  omega*rv*cos(thv)
+      wz    = 0.
+
+c     wx = 0.0
+c     wy = A*sin(2.0*pi*freq*time)
+c     wz = 0.0
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine set_obj  ! define objects for surface integrals
+c
+      include 'SIZE'
+      include 'TOTAL'
+
+      integer e,f,eg
+
+      nobj = 1
+      iobj = 0
+      do ii=nhis+1,nhis+nobj
+         iobj = iobj+1
+         hcode(10,ii) = 'I'
+         hcode( 1,ii) = 'F'
+         hcode( 2,ii) = 'F'
+         hcode( 3,ii) = 'F'
+         lochis(1,ii) = iobj
+      enddo
+      nhis = nhis + nobj
+
+      if (maxobj.lt.nobj) call exitti('increase maxobj in SIZE$',nobj)
+
+      nxyz  = nx1*ny1*nz1
+      nface = 2*ndim
+
+      do e=1,nelv
+      do f=1,nface
+         if (cbc(f,e,1).eq.'mv ') then
+            iobj  = 1
+            if (iobj.gt.0) then
+               nmember(iobj) = nmember(iobj) + 1
+               mem = nmember(iobj)
+               eg  = lglel(e)
+               object(iobj,mem,1) = eg
+               object(iobj,mem,2) = f
+c              write(6,1) iobj,mem,f,eg,e,nid,' OBJ'
+c   1          format(6i9,a4)
+
+            endif
+         endif
+      enddo
+      enddo
+
+      return
+      end
+c-----------------------------------------------------------------------

@@ -1,0 +1,12 @@
+gmsh2nek << EOF
+2
+$1
+0
+0
+$1
+EOF
+#
+genmap << EOF
+$1
+.1
+EOF
