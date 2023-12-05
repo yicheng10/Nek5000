@@ -20,4 +20,9 @@ bin/prex
 bin/re2torea
 bin/reatore2
 
+# rules for multiairfoil project
+multiairfoil/**/*log*
+multiairfoil/**/*.nek5000
+multiairfoil/**/*0.f0*    
+
 __pycache__
