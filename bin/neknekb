@@ -56,4 +56,4 @@ for ((i = 1; i <= $(($NT/2)); i++ )); do
 
 done
 
-mpiexec -np $NP ./nek5000 &
+mpirun -np $NP ./nek5000 &
